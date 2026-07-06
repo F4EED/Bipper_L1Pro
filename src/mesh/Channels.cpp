@@ -220,6 +220,25 @@ void Channels::initDefaultChannel(ChannelIndex chIndex)
         channelSettings.downlink_enabled = USERPREFS_CHANNEL_2_DOWNLINK_ENABLED;
 #endif
         break;
+    case 7:
+#ifdef USERPREFS_CHANNEL_7_PSK
+        static const uint8_t defaultpsk7[] = USERPREFS_CHANNEL_7_PSK;
+        memcpy(channelSettings.psk.bytes, defaultpsk7, sizeof(defaultpsk7));
+        channelSettings.psk.size = sizeof(defaultpsk7);
+#endif
+#ifdef USERPREFS_CHANNEL_7_NAME
+        strcpy(channelSettings.name, (const char *)USERPREFS_CHANNEL_7_NAME);
+#endif
+#ifdef USERPREFS_CHANNEL_7_PRECISION
+        channelSettings.module_settings.position_precision = USERPREFS_CHANNEL_7_PRECISION;
+#endif
+#ifdef USERPREFS_CHANNEL_7_UPLINK_ENABLED
+        channelSettings.uplink_enabled = USERPREFS_CHANNEL_7_UPLINK_ENABLED;
+#endif
+#ifdef USERPREFS_CHANNEL_7_DOWNLINK_ENABLED
+        channelSettings.downlink_enabled = USERPREFS_CHANNEL_7_DOWNLINK_ENABLED;
+#endif
+        break;
     default:
         break;
     }
@@ -303,6 +322,9 @@ void Channels::initDefaults()
     }
 #else
     initDefaultChannel(0);
+#endif
+#ifdef USERPREFS_CHANNEL_7_NAME
+    initDefaultChannel(7);
 #endif
 }
 

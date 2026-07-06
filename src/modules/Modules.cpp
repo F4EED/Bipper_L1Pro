@@ -96,6 +96,9 @@
 #if !MESHTASTIC_EXCLUDE_EXTERNALNOTIFICATION
 #include "modules/ExternalNotificationModule.h"
 #endif
+#if defined(GAULIX_PAGER) && HAS_SCREEN
+#include "modules/GaulixPagerModule.h"
+#endif
 #if !MESHTASTIC_EXCLUDE_RANGETEST && !MESHTASTIC_EXCLUDE_GPS
 #include "modules/RangeTestModule.h"
 #endif
@@ -265,6 +268,9 @@ void setupModules()
 #endif
 #if !MESHTASTIC_EXCLUDE_EXTERNALNOTIFICATION
     externalNotificationModule = new ExternalNotificationModule();
+#endif
+#if defined(GAULIX_PAGER) && HAS_SCREEN
+    gaulixPagerModule = new GaulixPagerModule();
 #endif
 #if !MESHTASTIC_EXCLUDE_RANGETEST && !MESHTASTIC_EXCLUDE_GPS
     if (moduleConfig.has_range_test && moduleConfig.range_test.enabled)
