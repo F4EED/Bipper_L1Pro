@@ -875,12 +875,18 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
     config.has_bluetooth = (HAS_BLUETOOTH ? true : false);
     config.has_security = true;
     config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_ALL;
+#ifdef USERPREFS_CONFIG_DEVICE_REBROADCAST_MODE
+    config.device.rebroadcast_mode = USERPREFS_CONFIG_DEVICE_REBROADCAST_MODE;
+#endif
 
     config.lora.sx126x_rx_boosted_gain = true;
     config.lora.tx_enabled =
         true; // FIXME: maybe false in the future, and setting region to enable it. (unset region forces it off)
     config.lora.override_duty_cycle = false;
     config.lora.config_ok_to_mqtt = false;
+#ifdef USERPREFS_CONFIG_LORA_OK_TO_MQTT
+    config.lora.config_ok_to_mqtt = USERPREFS_CONFIG_LORA_OK_TO_MQTT;
+#endif
 #if HAS_LORA_FEM
     config.lora.fem_lna_mode = meshtastic_Config_LoRaConfig_FEM_LNA_Mode_ENABLED;
 #else
@@ -944,6 +950,10 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
 
 #ifdef USERPREFS_LORACONFIG_OVERRIDE_FREQUENCY
     config.lora.override_frequency = USERPREFS_LORACONFIG_OVERRIDE_FREQUENCY;
+#endif
+
+#ifdef USERPREFS_LORACONFIG_CHANNEL_NUM
+    config.lora.channel_num = USERPREFS_LORACONFIG_CHANNEL_NUM;
 #endif
 
     config.lora.hop_limit = HOP_RELIABLE;
@@ -1022,6 +1032,9 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
     if (config.device.role != meshtastic_Config_DeviceConfig_Role_ROUTER &&
         config.device.role != meshtastic_Config_DeviceConfig_Role_ROUTER_LATE)
         config.device.node_info_broadcast_secs = default_node_info_broadcast_secs;
+#ifdef USERPREFS_CONFIG_DEVICE_NODE_INFO_BROADCAST_SECS
+    config.device.node_info_broadcast_secs = USERPREFS_CONFIG_DEVICE_NODE_INFO_BROADCAST_SECS;
+#endif
     config.security.serial_enabled = true;
     config.security.admin_channel_enabled = false;
     resetRadioConfig(true); // This also triggers NodeInfo/Position requests since we're fresh
@@ -1878,6 +1891,8 @@ void NodeDB::installDefaultDeviceState()
     pickNewNodeNum(); // based on macaddr now
 #ifdef USERPREFS_CONFIG_OWNER_LONG_NAME
     snprintf(owner.long_name, sizeof(owner.long_name), (const char *)USERPREFS_CONFIG_OWNER_LONG_NAME);
+#elif defined(GAULIX_PAGER)
+    snprintf(owner.long_name, sizeof(owner.long_name), "42BIP_LM8CMN-SDIS/%04x", getNodeNum() & 0xffff);
 #else
     snprintf(owner.long_name, sizeof(owner.long_name), "Meshtastic %04x", getNodeNum() & 0x0ffff);
 #endif
@@ -2375,6 +2390,31 @@ void NodeDB::loadFromDisk()
 
 #ifdef USERPREFS_LORACONFIG_OVERRIDE_FREQUENCY
     config.lora.override_frequency = USERPREFS_LORACONFIG_OVERRIDE_FREQUENCY;
+#endif
+
+#ifdef USERPREFS_LORACONFIG_MODEM_PRESET
+    if (!configDecodeFailed)
+        config.lora.modem_preset = USERPREFS_LORACONFIG_MODEM_PRESET;
+#endif
+
+#ifdef USERPREFS_LORACONFIG_TX_POWER
+    if (!configDecodeFailed)
+        config.lora.tx_power = USERPREFS_LORACONFIG_TX_POWER;
+#endif
+
+#ifdef USERPREFS_LORACONFIG_CHANNEL_NUM
+    if (!configDecodeFailed)
+        config.lora.channel_num = USERPREFS_LORACONFIG_CHANNEL_NUM;
+#endif
+
+#ifdef USERPREFS_CONFIG_LORA_OK_TO_MQTT
+    if (!configDecodeFailed)
+        config.lora.config_ok_to_mqtt = USERPREFS_CONFIG_LORA_OK_TO_MQTT;
+#endif
+
+#ifdef USERPREFS_CONFIG_LORA_IGNORE_MQTT
+    if (!configDecodeFailed)
+        config.lora.ignore_mqtt = USERPREFS_CONFIG_LORA_IGNORE_MQTT;
 #endif
 
     if (backupSecurity.private_key.size > 0) {

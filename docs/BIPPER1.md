@@ -92,7 +92,9 @@ Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` po
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1`. |
 | `src/modules/Modules.cpp` | `#include` et `new GaulixPagerModule()` sous `#if defined(GAULIX_PAGER) && HAS_SCREEN`. |
 | `userPrefs.jsonc` | Canaux Gaulix, région EU868, sonnerie RTTTL. |
-| `src/mesh/Channels.cpp` | Support `USERPREFS_CHANNEL_7_*` + appel `initDefaultChannel(7)` dans `initDefaults()`. |
+| `src/mesh/Channels.cpp` | Support `USERPREFS_CHANNEL_3_*` et `USERPREFS_CHANNEL_7_*` + `initDefaultChannel(7)`. |
+| `src/mesh/NodeDB.cpp` | Clés fork `USERPREFS_CONFIG_LORA_OK_TO_MQTT`, `USERPREFS_CONFIG_DEVICE_REBROADCAST_MODE`, `USERPREFS_CONFIG_DEVICE_NODE_INFO_BROADCAST_SECS` ; nom long Gaulix sous `GAULIX_PAGER`. |
+| `userPrefs.jsonc` | Configuration usine complète Gaulix (LoRa, canaux, rôle, BT, GPS, position). |
 
 ### Dépôts Git
 
@@ -113,24 +115,117 @@ git fetch upstream
 
 ---
 
-## Configuration des canaux
+## Configuration usine Gaulix (Bipper L1 Pro)
+
+Paramètres compilés via `userPrefs.jsonc` et appliqués au **premier boot** ou après **factory reset**. Certains réglages nécessitent encore l'application Meshtastic (voir colonne *App*).
+
+### LoRa
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Preset modem | `LONG_MODERATE` | `USERPREFS_LORACONFIG_MODEM_PRESET` |
+| Région | EU 868 MHz | `USERPREFS_CONFIG_LORA_REGION` |
+| TX activé | oui | défaut firmware (`tx_enabled=true`) |
+| Puissance TX | 25 dBm | `USERPREFS_LORACONFIG_TX_POWER` |
+| Slot fréquence | 1 | `USERPREFS_LORACONFIG_CHANNEL_NUM` |
+| Gain RX SX126x boosté | oui | défaut firmware (`sx126x_rx_boosted_gain=true`) |
+| Fréquence override | 869,4625 MHz | `USERPREFS_LORACONFIG_OVERRIDE_FREQUENCY` |
+| Ignore MQTT | non | `USERPREFS_CONFIG_LORA_IGNORE_MQTT` |
+| OK to MQTT | oui | `USERPREFS_CONFIG_LORA_OK_TO_MQTT` *(clé fork)* |
+
+### Canaux (PSK `AQ==` = index court `{ 0x01 }`)
+
+| Index | Nom | Rôle | Uplink | Downlink | Position | Précision |
+|:-----:|:----|:-----|:------:|:--------:|:--------:|:---------:|
+| **0** | `Fr_Balise` | PRIMARY | on | on | on | 32 (max) |
+| **1** | `Fr_EMCOM` | SECONDARY | on | on | on | 32 |
+| **2** | `Fr_BlaBla` | SECONDARY | on | on | on | 32 |
+| **3** | `Fr_Tech` | SECONDARY | on | on | on | 32 |
+| 4–6 | *(vide)* | SECONDARY | — | — | — | — |
+| **7** | `Alerte` | SECONDARY | on | on | on | 32 |
+
+> **PSK `{ 0x01 }`** : forme courte Meshtastic (clé publique par défaut). À remplacer en production.
+
+`USERPREFS_CHANNELS_TO_WRITE: "4"` initialise les canaux **0 à 3** ; le canal **7** est initialisé séparément dans `Channels.cpp` (`case 7:` + `initDefaultChannel(7)`).
+
+### Utilisateur
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Nom long | `42BIP_LM8CMN-SDIS/XXXX` | `GAULIX_PAGER` : suffixe `%04x` = 4 derniers chiffres hex du node num |
+| Nom court | défaut Meshtastic | `%04x` du node num (non surchargé) |
+
+> **Limite 24 octets** (`MAX_LONG_NAME_BYTES`) : le chemin complet `42BIP_LM8CMN-SDIS/Dept/AASC/ODM/CRF/...` ne tient pas en usine — à compléter via l'app Meshtastic.
+
+### Appareil
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Rôle | `CLIENT_MUTE` | `USERPREFS_CONFIG_DEVICE_ROLE` |
+| Rebroadcast | `NONE` | `USERPREFS_CONFIG_DEVICE_REBROADCAST_MODE` *(à discuter — redondant avec CLIENT_MUTE)* |
+| NodeInfo broadcast | 1400 s | `USERPREFS_CONFIG_DEVICE_NODE_INFO_BROADCAST_SECS` *(clé fork)* |
+| Neighbor info | désactivé | défaut firmware (`neighbor_info.enabled=false`) |
+
+### Bluetooth
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Activé | oui | défaut firmware |
+| Mode appairage | `FIXED_PIN` | `USERPREFS_FIXED_BLUETOOTH` |
+| PIN | 123456 | `USERPREFS_FIXED_BLUETOOTH` |
+
+### Position / GPS
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Broadcast position | 21600 s (6 h) | `USERPREFS_CONFIG_POSITION_BROADCAST_INTERVAL` |
+| Smart position | activé | `USERPREFS_CONFIG_SMART_POSITION_ENABLED` |
+| Distance min smart | 100 m | défaut firmware |
+| Intervalle min smart | 300 s | défaut firmware |
+| GPS | activé | `USERPREFS_CONFIG_GPS_MODE` |
+| Intervalle MAJ GPS | 120 s | `USERPREFS_CONFIG_GPS_UPDATE_INTERVAL` |
+
+### Messages prédéfinis (CannedMessage)
+
+| Paramètre | Valeur usine | Mécanisme |
+|:----------|:-------------|:----------|
+| Messages | *(placeholder)* | **App** — pas de clé `USERPREFS_*` ; à configurer dans l'app |
+
+### Réglages uniquement via l'app Meshtastic
+
+- Chemin long complet du nom (`Dept/AASC/ODM/CRF/...`)
+- Messages prédéfinis (CannedMessage)
+- Fuseau horaire (`USERPREFS_TZ_STRING` est un placeholder compile-time)
+
+### Points « à discuter »
+
+| Sujet | Détail |
+|:------|:-------|
+| **Rebroadcast NONE** | `CLIENT_MUTE` inhibe déjà le rebroadcast ; le mode `NONE` est une ceinture de sécurité supplémentaire |
+| **NodeInfo 1400 s** | En dessous du minimum admin (3600 s) — accepté à l'usine, l'app peut le relever si modifié |
+| **PSK publique** | `{ 0x01 }` = réseau ouvert ; clés dédiées Gaulix en production |
+
+---
+
+## Configuration des canaux (détail technique)
 
 Les canaux sont définis dans `userPrefs.jsonc` et compilés dans le firmware. Ils sont appliqués lors de l'**installation initiale** ou après un **factory reset** (voir section dédiée).
 
-### Table des canaux Gaulix
+### Table des canaux Gaulix (résumé)
 
 | Index | Nom | Rôle Meshtastic | PSK | Usage prévu |
 |:-----:|:----|:----------------|:----|:-------------|
 | **0** | `Fr_Balise` | PRIMARY | `{ 0x01 }` | Canal principal — balises / trafic mesh Gaulix |
 | **1** | `Fr_EMCOM` | SECONDARY | `{ 0x01 }` | EMCOM — communications d'urgence |
 | **2** | `Fr_BlaBla` | SECONDARY | `{ 0x01 }` | Trafic conversationnel |
-| **7** | `Alertes` | SECONDARY | `{ 0x01 }` | Canal dédié alertes PCS / secours *(dernier canal secondaire configuré)* |
+| **3** | `Fr_Tech` | SECONDARY | `{ 0x01 }` | Canal technique |
+| **7** | `Alerte` | SECONDARY | `{ 0x01 }` | Canal dédié alertes PCS / secours |
 
 > **PSK `{ 0x01 }`** : forme courte Meshtastic (index 1 dans la table des clés par défaut). À remplacer par des clés propres au déploiement Gaulix en production.
 
 ### Mécanisme d'initialisation
 
-`USERPREFS_CHANNELS_TO_WRITE: "3"` initialise les canaux **0, 1 et 2** via une boucle dans `Channels::initDefaults()`.
+`USERPREFS_CHANNELS_TO_WRITE: "4"` initialise les canaux **0, 1, 2 et 3** via une boucle dans `Channels::initDefaults()`.
 
 Le canal **7** est initialisé séparément grâce à l'extension fork dans `Channels.cpp` :
 
@@ -270,7 +365,7 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 
 1. Allumer le bippeur et le configurer dans l'app Meshtastic (nom du nœud, etc.).
 2. Si l'appareil avait une config antérieure : effectuer un **factory reset** pour appliquer les canaux Gaulix.
-3. Vérifier dans l'app que les canaux `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla` et `Alertes` sont présents.
+3. Vérifier dans l'app que les canaux `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech` et `Alerte` sont présents.
 4. Faire défiler les écrans OLED jusqu'à l'écran **PAGER Gaulix v1.0**.
 
 ---
@@ -284,7 +379,7 @@ Roadmap détaillée : [propositions-phases-bip-gaulix.md](propositions-phases-bi
 | Fonction | Statut | Description |
 |:---------|:------:|:------------|
 | Écran Etat_bipper | ✅ | Accueil pager avec batterie et compteurs |
-| Canaux Gaulix par défaut | ✅ | ch0–2 + ch7 via userPrefs |
+| Canaux Gaulix par défaut | ✅ | ch0–3 + ch7 via userPrefs |
 | `#alerte <texte>` | ⏳ | Déclenchement alerte secours |
 | `#secours <texte>` | ⏳ | Synonyme alerte |
 | `#fin` | ⏳ | Fin d'alerte, retour normal |
@@ -343,7 +438,7 @@ Roadmap détaillée : [propositions-phases-bip-gaulix.md](propositions-phases-bi
 |:-----|:-----------------|
 | Build `seeed_wio_tracker_L1` | Compilation sans erreur, `firmware.uf2` généré |
 | Boot après flash UF2 | Nœud Meshtastic visible dans l'app |
-| Canaux (après factory reset) | `Fr_Balise` (primary), `Fr_EMCOM`, `Fr_BlaBla`, `Alertes` |
+| Canaux (après factory reset) | `Fr_Balise` (primary), `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech`, `Alerte` |
 | Écran pager | Frame « PAGER Gaulix v1.0 » dans la rotation OLED |
 | Envoi `#alerte test` | **Aucun comportement spécial** (attendu tant que Phase 1 incomplète) |
 
@@ -384,6 +479,7 @@ firmware_meshtastic/
 
 | Version | Date | Auteur | Notes |
 |:--------|:-----|:-------|:------|
+| 1.1 | 06/07/2026 | Réseau Gaulix | Configuration usine complète (LoRa, canaux, rôle, BT, GPS) |
 | 1.0 | 06/07/2026 | Réseau Gaulix | Documentation initiale de l'état fork Bipper1 |
 
 ---
