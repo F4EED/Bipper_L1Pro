@@ -1134,6 +1134,11 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
     config.display.compass_orientation = COMPASS_ORIENTATION;
 #endif
 
+#if defined(GAULIX_PAGER)
+    // Keep UI static by default on Gaulix pager builds.
+    config.display.auto_screen_carousel_secs = 0;
+#endif
+
 #if defined(ARCH_ESP32) && !MESHTASTIC_EXCLUDE_WIFI
     if (MeshtasticOTA::isUpdated()) {
         MeshtasticOTA::recoverConfig(&config.network);

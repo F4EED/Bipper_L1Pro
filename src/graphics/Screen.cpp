@@ -1162,7 +1162,14 @@ int32_t Screen::runOnce()
     // standard screen switching is stopped.
     if (showingNormalScreen) {
         // standard screen loop handling here
-        if (config.display.auto_screen_carousel_secs > 0 &&
+#if defined(GAULIX_PAGER)
+        // Gaulix pager must stay on operator-selected frames only.
+        // Ignore persisted auto carousel settings on this build.
+        const bool allowAutoCarousel = false;
+#else
+        const bool allowAutoCarousel = true;
+#endif
+        if (allowAutoCarousel && config.display.auto_screen_carousel_secs > 0 &&
             NotificationRenderer::current_notification_type != notificationTypeEnum::text_input &&
             !Throttle::isWithinTimespanMs(lastScreenTransition, config.display.auto_screen_carousel_secs * 1000)) {
 
@@ -1458,7 +1465,15 @@ void Screen::setFrames(FrameFocus focus)
     // Focus on a specific frame, in the frame set we just created
     switch (focus) {
     case FOCUS_DEFAULT:
+#if defined(GAULIX_PAGER)
+        if (fsi.positions.focusedModule != 255) {
+            ui->switchToFrame(fsi.positions.focusedModule);
+        } else {
+            ui->switchToFrame(fsi.positions.deviceFocused);
+        }
+#else
         ui->switchToFrame(fsi.positions.deviceFocused);
+#endif
         break;
     case FOCUS_FAULT:
         ui->switchToFrame(fsi.positions.fault);
