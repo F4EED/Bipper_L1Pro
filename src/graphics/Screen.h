@@ -666,6 +666,9 @@ class Screen : public concurrency::OSThread
     void setScreensaverFrames(FrameCallback einkScreensaver = NULL);
 #endif
 
+    uint8_t getCurrentFrameIndex() const { return ui ? ui->getUiState()->currentFrame : 255; }
+    bool isNormalScreenActive() const { return showingNormalScreen; }
+
   protected:
     /// Updates the UI.
     //

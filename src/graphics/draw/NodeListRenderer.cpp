@@ -797,15 +797,29 @@ void drawDynamicListScreen_Nodes(OLEDDisplay *display, OLEDDisplayUiState *state
 #endif
     // On very first call (on boot or state enter)
     if (lastRenderedMode == MODE_COUNT_NODE) {
+#if defined(GAULIX_PAGER)
+        // Gaulix Bipper: page "Last Heard" masquee — demarrer sur Hops/Signal.
+        currentMode_Nodes = MODE_HOP_SIGNAL;
+#else
         currentMode_Nodes = MODE_LAST_HEARD;
+#endif
         modeStartTime = now;
     }
 
     // Time to switch to next mode?
+#if defined(GAULIX_PAGER)
+    // Gaulix Bipper: pas de rotation vers "Last Heard".
+    currentMode_Nodes = MODE_HOP_SIGNAL;
+    // if (now - modeStartTime >= getModeCycleIntervalMs()) {
+    //     currentMode_Nodes = static_cast<ListMode_Node>((currentMode_Nodes + 1) % MODE_COUNT_NODE);
+    //     modeStartTime = now;
+    // }
+#else
     if (now - modeStartTime >= getModeCycleIntervalMs()) {
         currentMode_Nodes = static_cast<ListMode_Node>((currentMode_Nodes + 1) % MODE_COUNT_NODE);
         modeStartTime = now;
     }
+#endif
 
     // Render screen based on currentMode
     const char *title = getCurrentModeTitle_Nodes(display->getWidth());
@@ -833,15 +847,29 @@ void drawDynamicListScreen_Location(OLEDDisplay *display, OLEDDisplayUiState *st
 #endif
     // On very first call (on boot or state enter)
     if (lastRenderedMode == MODE_COUNT_LOCATION) {
+#if defined(GAULIX_PAGER)
+        // Gaulix Bipper: page "Distance" masquee — demarrer sur Bearings.
+        currentMode_Location = MODE_BEARING;
+#else
         currentMode_Location = MODE_DISTANCE;
+#endif
         modeStartTime = now;
     }
 
     // Time to switch to next mode?
+#if defined(GAULIX_PAGER)
+    // Gaulix Bipper: pas de rotation vers "Distance".
+    currentMode_Location = MODE_BEARING;
+    // if (now - modeStartTime >= getModeCycleIntervalMs()) {
+    //     currentMode_Location = static_cast<ListMode_Location>((currentMode_Location + 1) % MODE_COUNT_LOCATION);
+    //     modeStartTime = now;
+    // }
+#else
     if (now - modeStartTime >= getModeCycleIntervalMs()) {
         currentMode_Location = static_cast<ListMode_Location>((currentMode_Location + 1) % MODE_COUNT_LOCATION);
         modeStartTime = now;
     }
+#endif
 
     // Render screen based on currentMode
     const char *title = getCurrentModeTitle_Location(display->getWidth());

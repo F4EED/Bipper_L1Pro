@@ -1107,6 +1107,12 @@ int32_t Screen::runOnce()
             handleStartFirmwareUpdateScreen();
             break;
         case Cmd::STOP_ALERT_FRAME:
+#if defined(GAULIX_PAGER)
+            // Pager alert UI is dismissed only by GaulixPagerModule::clearAlert().
+            if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
+                break;
+            }
+#endif
             NotificationRenderer::pauseBanner = false;
             // Return from one-off alert mode back to regular frames.
             if (!showingNormalScreen && NotificationRenderer::current_notification_type != notificationTypeEnum::text_input) {
@@ -1275,6 +1281,11 @@ void Screen::setFrames(FrameFocus focus)
     if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
         return;
     }
+    // Pages node list / favoris / LoRa toujours masquees sur le Bipper Gaulix.
+    hiddenFrames.nodelist_nodes = true;
+    hiddenFrames.nodelist_location = true;
+    hiddenFrames.show_favorites = true;
+    hiddenFrames.lora = true;
 #endif
 
     uint8_t originalPosition = ui->getUiState()->currentFrame;
@@ -1336,21 +1347,39 @@ void Screen::setFrames(FrameFocus focus)
 
 // Show detailed node views only on E-Ink builds
 #ifdef USE_EINK
+#if !defined(GAULIX_PAGER)
     if (!hiddenFrames.nodelist_lastheard) {
         fsi.positions.nodelist_lastheard = numframes;
         normalFrames[numframes++] = graphics::NodeListRenderer::drawLastHeardScreen;
         indicatorIcons.push_back(icon_nodes);
     }
+#else
+    // Gaulix Bipper: page Last Heard masquee.
+    // if (!hiddenFrames.nodelist_lastheard) {
+    //     fsi.positions.nodelist_lastheard = numframes;
+    //     normalFrames[numframes++] = graphics::NodeListRenderer::drawLastHeardScreen;
+    //     indicatorIcons.push_back(icon_nodes);
+    // }
+#endif
     if (!hiddenFrames.nodelist_hopsignal) {
         fsi.positions.nodelist_hopsignal = numframes;
         normalFrames[numframes++] = graphics::NodeListRenderer::drawHopSignalScreen;
         indicatorIcons.push_back(icon_signal);
     }
+#if !defined(GAULIX_PAGER)
     if (!hiddenFrames.nodelist_distance) {
         fsi.positions.nodelist_distance = numframes;
         normalFrames[numframes++] = graphics::NodeListRenderer::drawDistanceScreen;
         indicatorIcons.push_back(icon_distance);
     }
+#else
+    // Gaulix Bipper: page Distance masquee.
+    // if (!hiddenFrames.nodelist_distance) {
+    //     fsi.positions.nodelist_distance = numframes;
+    //     normalFrames[numframes++] = graphics::NodeListRenderer::drawDistanceScreen;
+    //     indicatorIcons.push_back(icon_distance);
+    // }
+#endif
 #endif
 #if HAS_GPS
 #ifdef USE_EINK
@@ -1739,6 +1768,12 @@ void Screen::loadFrameVisibility()
         spiLock->unlock();
         if (ok) {
             applyHiddenFramesMask(data.mask);
+#if defined(GAULIX_PAGER)
+            hiddenFrames.nodelist_nodes = true;
+            hiddenFrames.nodelist_location = true;
+            hiddenFrames.show_favorites = true;
+            hiddenFrames.lora = true;
+#endif
             LOG_INFO("Loaded frame visibility (mask 0x%08x)", data.mask);
         } else {
             LOG_WARN("Frame visibility file invalid, keeping defaults");
@@ -1746,6 +1781,12 @@ void Screen::loadFrameVisibility()
         return;
     }
     spiLock->unlock();
+#if defined(GAULIX_PAGER)
+    hiddenFrames.nodelist_nodes = true;
+    hiddenFrames.nodelist_location = true;
+    hiddenFrames.show_favorites = true;
+    hiddenFrames.lora = true;
+#endif
     LOG_DEBUG("No saved frame visibility, using defaults");
 #endif
 }

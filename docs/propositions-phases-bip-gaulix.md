@@ -1,7 +1,7 @@
 ---
 title: "Propositions et phases — Bip alerte Gaulix"
-version: "0.0.1"
-date: "06/07/2026"
+version: "0.1.0"
+date: "13/07/2026"
 projet: "Réseau Gaulix · Meshtastic"
 ---
 
@@ -21,8 +21,8 @@ projet: "Réseau Gaulix · Meshtastic"
 | | |
 |:--|:--|
 | **Document** | Roadmap fonctionnelle et technique |
-| **Version** | 0.0.1 |
-| **Date** | 06/07/2026 |
+| **Version** | 0.1.0 — **Phase 1 implémentée (firmware v1.6)** |
+| **Date** | 13/07/2026 |
 | **Matériel cible** | Seeed Wio Tracker L1 Pro |
 | **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`) |
 
@@ -55,13 +55,19 @@ Transformer un terminal **Meshtastic** en **pager d'alerte secours** pour le ré
 | Port `ALERT_APP` (protocole) | Canal dédié alertes critiques *(non implémenté en module firmware)* |
 | Priorité réseau | Les paquets critiques passent avant les messages courants |
 
-### Ce qui manque aujourd'hui
+### Ce qui manquait — état juillet 2026 (v1.6)
 
-- Pas de **mode pager secours** unifié
-- Pas de **code d'activation** anti-fausses alertes
-- Pas d'**acquittement** structuré avec retour au coordinateur
-- Pas d'**écran d'accueil** dédié au rôle pager
-- Pas de **commandes à distance** (`#alerte`, `#b`, `#fin`, etc.)
+| Besoin initial | Statut v1.6 |
+|:---------------|:------------|
+| Mode pager secours unifié | ✅ `GaulixPagerModule` |
+| Commandes `#alerte`, `#fin`, `#status`, etc. | ✅ Whitelist implémentée |
+| Acquittement + ACK coordinateur | ✅ ACK DM + GPS Fr_Balise |
+| Écran d'accueil pager | ✅ 4 lignes (`Nb AL.` / `Der.`, version, batterie) |
+| Historique alertes local | ✅ `GaulixPagerAlertListModule` (20 entrées) |
+| Alarme batterie faible | ✅ Bip doux à 10 %, rappel 5 min |
+| Carrousel UI épuré | ✅ Node / Bearings / LoRa / favoris masqués |
+| Code d'activation dans la syntaxe `#alerte` | ⏳ `#code` seul ; pas de code obligatoire dans `#alerte` |
+| `#urgence`, liste blanche, journal exportable | ⏳ Phase 2 |
 
 ---
 
@@ -126,40 +132,46 @@ secours     d'alerte    de crise    mode crise
 
 ---
 
-### Phase 1 — Pager secours Gaulix *(priorité immédiate)*
+### Phase 1 — Pager secours Gaulix *(implémentée — v1.6)*
 
-**Objectif :** livrer un bippeur d'alerte opérationnel sur L1 Pro.
+**Objectif :** livrer un bippeur d'alerte opérationnel sur L1 Pro. **Statut : livré en firmware v1.6** (juillet 2026).
 
 #### Déclenchement
 
 | Méthode | Exemple |
 |:--------|:--------|
-| Message avec mot-clé | `#alerte Rassemblement hall sportif` |
+| Alerte générale | `#alerte Rassemblement hall sportif` |
 | Synonyme secours | `#secours Renforts secteur Nord` |
-| Message direct ou canal PCS | Selon configuration réseau Gaulix |
-| Code d'activation | `#alerte GAULIX <texte>` *(code configurable)* |
+| Alerte par service | `#T1 Intervention` *(si `#tag 1` configuré localement)* |
+| Info (sans écran alerte) | `#info Fin exercice` |
+| DM ou canal **Alerte** | Broadcast ou message direct |
 
-#### Comportement à la réception
+#### Comportement à la réception (v1.6)
 
-1. Vérification du **code d'activation** (stocké en NVS, persistant)
-2. **Écran plein** : « ALERTE SECOURS » + texte + horodatage
-3. **3 bips** par défaut (pattern réglable)
-4. **LEDs** : clignotement par séries de 3 impulsions
-5. **Mode continu** (`#b 0`) : alarme jusqu'à acquittement
-6. **Acquittement** : appui trackball ou bouton Program
-7. **ACK automatique** en DM : `Pager OK — alerte reçue à HH:MM`
-8. **Compteur** d'alertes + écran d'accueil pager
+1. **Whitelist** des commandes (`#alerte`, `#secours`, `#fin`, etc.) — texte libre ignoré
+2. **Écran plein** : « ALERTE SECOURS » + texte + `JJ/MM HH:MM`
+3. **Pim-pom** (3100 Hz / 2400 Hz) en boucle toutes les 1,5 s jusqu'à acquittement
+4. **LED** PIN_LED1 : clignotement pendant alerte
+5. **Acquittement** : appui trackball → ACK DM + bip fin
+6. **ACK** : `Pager ACK alerte JJ/MM HH:MM` (+ GPS si activé)
+7. **Écran accueil** : nom \| `Nb AL. : N \| Der. : HH:MM` \| version \| batterie
+8. **Historique alertes** : frame 2, 20 entrées, scroll Haut/Bas
+9. **Alarme batterie** : bip doux à ≤ 10 % (hors USB), rappel 5 min
+10. **Timeout** : coupure auto après **30 min** sans acquittement
 
-#### Commandes à distance
+#### Commandes à distance (v1.6)
 
 | Commande | Action |
 |:---------|:-------|
-| `#alerte <texte>` | Déclenche une alerte secours |
-| `#secours <texte>` | Synonyme alerte |
-| `#fin` | Fin d'alerte, retour à l'état normal |
-| `#b <n>` | Règle le nombre de bips (`0` = continu) |
-| `#code <ancien> <nouveau>` | Change le code d'activation |
-| `#status` | État du pager (alertes, batterie, écoute) |
+| `#alerte <texte>` | Alerte secours (tous Bippers) |
+| `#secours <texte>` | Synonyme |
+| `#T1`…`#T4 <texte>` | Alerte si tag local correspond |
+| `#tag <0-4>` | Configure le tag service |
+| `#info` / `#Info <texte>` | 3× pim-pom, pas d'alerte écran |
+| `#fin` | Fin d'alerte à distance |
+| `#b <n>` | NVS legacy *(n'affecte plus le son)* |
+| `#code <ancien> <nouveau>` | Code d'activation |
+| `#status` | État du pager |
 
 #### Sécurités
 
@@ -186,9 +198,9 @@ secours     d'alerte    de crise    mode crise
 
 | Niveau | Commande | Son | Écran |
 |:-------|:---------|:----|:------|
-| **Info** | `#info <texte>` | 1 bip court | Bandeau discret |
-| **Alerte** | `#alerte <texte>` | 3 bips | Plein écran orange |
-| **Urgence** | `#urgence <texte>` | Alarme continue | Plein écran rouge clignotant |
+| **Info** | `#info <texte>` | 3× pim-pom | Pas d'écran alerte ✅ *v1.6* |
+| **Alerte** | `#alerte <texte>` | Pim-pom continu | Plein écran ALERTE SECOURS ✅ *v1.6* |
+| **Urgence** | `#urgence <texte>` | — | ⏳ Phase 2 |
 | **Fin** | `#fin` | 2 bips descendants | Retour normal |
 
 #### Fonctions additionnelles
@@ -236,13 +248,12 @@ secours     d'alerte    de crise    mode crise
 #### Écran d'accueil pager
 
 ```
-┌─────────────────────┐
-│  PAGER GAULIX v1.0  │
-│  ● En écoute        │
-│  Alertes : 12       │
-│  Dernière : 14:32   │
-│  Batterie : 78 %    │
-└─────────────────────┘
+┌─────────────────────────────┐
+│ Bipper de demo              │
+│ Nb AL. : 0 | Der. : --:--   │
+│      Bipper Gaulix v1.6     │
+│ Batterie : 78 %             │
+└─────────────────────────────┘
 ```
 
 #### Navigation trackball
@@ -261,8 +272,8 @@ secours     d'alerte    de crise    mode crise
 | Ressource | Broche / détail | Usage crise |
 |:----------|:----------------|:------------|
 | Buzzer | D12 (`PIN_BUZZER`) | Alarmes sonores |
-| LED verte | PIN_LED1 | Signal « en écoute » |
-| LED bleue | PIN_LED2 | Signal « alerte active » |
+| LED alerte | PIN_LED1 | Clignotement alerte active |
+| LED bleue | PIN_LED2 | **Ne pas utiliser pour alerte** (conflit buzzer corrigé en v1.3) |
 | Trackball | TB_UP/DOWN/LEFT/RIGHT/PRESS | Navigation et acquittement |
 | Bouton Program | D13 | Acquittement alternatif |
 | Écran OLED | SSD1306 | Alertes plein écran |
@@ -278,24 +289,21 @@ secours     d'alerte    de crise    mode crise
 
 | Question | Recommandation |
 |:---------|:---------------|
-| Par où commencer ? | **Option B — Phase 1** |
+| Par où commencer ? | **Phase 1 livrée** — maintenance et Phase 2 |
 | Matériel ? | **Seeed Wio Tracker L1 Pro** |
 | Réseau ? | **Gaulix**, presets Meshtastic EU868 standards |
 | Émission alertes ? | **App Meshtastic** (DM ou canal PCS) |
-| Code d'activation ? | À définir *(ex. nom de commune ou code AASC local)* |
-| Qui déclenche ? | Coordinateurs AASC / référents PCS *(liste blanche en Phase 2)* |
-| Premier livrable ? | Firmware `.uf2` + fiche réflexe |
+| Code d'activation ? | `GAULIX` par défaut — modifiable via `#code` |
+| Premier livrable ? | Firmware `.uf2` v1.6 ✅ — fiche réflexe ⏳ |
 
 ---
 
-## Prochaines décisions à prendre
+## Prochaines décisions / travaux
 
-Avant de lancer le développement Phase 1, il reste à trancher :
-
-1. **Code d'activation Gaulix** par défaut *(ex. `GAULIX`, `PCS2026`, nom de commune)*
-2. **Canal broadcast** ou **messages directs** uniquement ?
-3. **Liste blanche** dès la V1 ou seulement en Phase 2 ?
-4. **Nom du module** firmware : `GaulixPagerModule` ou autre ?
+1. **Fiche réflexe opérateur** PDF (envoi alerte, acquittement, test `#info`)
+2. **Code d'activation** obligatoire dans la syntaxe `#alerte` ?
+3. **Liste blanche** coordinateurs (Phase 2)
+4. **`#urgence`** et niveaux visuels distincts
 
 ---
 
@@ -303,7 +311,7 @@ Avant de lancer le développement Phase 1, il reste à trancher :
 
 <table width="100%">
 <tr>
-<td align="left"><em>Document complémentaire du cahier des charges V0.0.1</em></td>
-<td align="right"><em>Réseau Gaulix — 06/07/2026</em></td>
+<td align="left"><em>Document complémentaire du cahier des charges V0.1.0</em></td>
+<td align="right"><em>Réseau Gaulix — 13/07/2026 — firmware v1.6</em></td>
 </tr>
 </table>

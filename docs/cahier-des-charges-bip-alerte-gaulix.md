@@ -1,9 +1,9 @@
 ---
 title: "Cahier des charges — Bip alerte Gaulix"
-version: "0.0.1"
-date: "06/07/2026"
+version: "0.1.0"
+date: "13/07/2026"
 author: "Réseau Gaulix"
-status: "Brouillon"
+status: "Implémenté — firmware v1.6 (Phase 1)"
 ---
 
 <table>
@@ -21,8 +21,8 @@ status: "Brouillon"
 | | |
 |:--|:--|
 | **Document** | Cahier des charges Bip alerte — Réseau Gaulix |
-| **Version** | 0.0.1 |
-| **Date** | 06/07/2026 |
+| **Version** | 0.1.0 (spec) / firmware **v1.6** |
+| **Date** | 13/07/2026 |
 
 </td>
 </tr>
@@ -75,13 +75,17 @@ Afin d'assurer la conception d'un bippeur d'alerte employable dans le cadre du r
 - Réception d'une **commande d'activation** sur le réseau Meshtastic (message direct ou canal dédié Gaulix), avec **code d'activation** configurable pour limiter les fausses alertes.
 - Syntaxe de commande simple et mémorisable, par exemple : `#alerte <texte>` ou `#secours <texte>`.
 - À la réception d'une alerte valide :
-  - **signal sonore** (buzzer) : séquence de bips par défaut (3 bips), avec possibilité de **mode continu** jusqu'à acquittement ;
-  - **affichage plein écran** sur OLED : libellé « ALERTE SECOURS », texte du message, horodatage ;
-  - **signal visuel** complémentaire (LED) : clignotement par séries.
-- **Acquittement local** par l'opérateur (bouton ou trackball) : arrêt de l'alarme et affichage « Alerte prise en compte ».
-- **Accusé de réception automatique** envoyé en message direct à l'émetteur (horodatage ; position GPS si activée).
-- Commande de **fin d'alerte** (`#fin`) pour retour à l'état normal.
-- Compteur d'alertes reçues et **écran d'accueil** mode pager (état : en écoute, dernière alerte, niveau batterie).
+  - **signal sonore** (buzzer) : séquence **pim-pom** (2 tons) répétée jusqu'à acquittement ; **3 séquences** pour `#info` ;
+  - **affichage plein écran** sur OLED : libellé « ALERTE SECOURS », texte du message, horodatage `JJ/MM HH:MM` ;
+  - **signal visuel** complémentaire (LED PIN_LED1) : clignotement pendant l'alerte.
+- **Acquittement local** par l'opérateur (trackball) : arrêt alarme, retour écran d'accueil.
+- **Accusé de réception automatique** en DM : `Pager ACK alerte JJ/MM HH:MM` (+ position GPS si activée).
+- Commande de **fin d'alerte** (`#fin`) pour retour à l'état normal (sans ACK).
+- **Écran d'accueil** pager (4 lignes) : nom long, `Nb AL. : N | Der. : HH:MM`, `Bipper Gaulix v1.6`, batterie.
+- **Historique local** des 20 dernières alertes (frame carrousel 2, scroll Haut/Bas).
+- **Alarme batterie faible** : bip sonore doux (moins fort que l'alerte) à **10 %** de charge, rappel périodique, silencieux en charge USB.
+- Compteur d'alertes remis à **zéro** à chaque allumage.
+- Tags de service `#T1`…`#T4` et `#tag` pour alertes ciblées.
 
 ### Réseau et usage opérationnel
 
@@ -92,8 +96,7 @@ Afin d'assurer la conception d'un bippeur d'alerte employable dans le cadre du r
 
 ### Configuration à distance
 
-- Réglage du **nombre de bips** (ex. `#b 5`).
-- Réglage du **mode alarme continue** (ex. `#b 0`).
+- Réglage du **nombre de bips** (ex. `#b 5`) — enregistré en NVS ; **le son d'alerte v1.6 est toujours pim-pom continu** jusqu'à acquittement.
 - Modification du **code d'activation** (ex. `#code ANCIEN NOUVEAU`), persistant après redémarrage.
 - Borne de sécurité : coupure automatique de l'alarme continue après délai maximal (30 min) si aucun acquittement.
 
@@ -164,14 +167,17 @@ La solution reste **auto-hébergeable** au sens mesh : aucun abonnement, aucun s
 
 ## Annexes
 
-### A — Commandes prévues (V1)
+### A — Commandes implémentées (v1.6)
 
 | Commande | Description | Exemple |
 |:---------|:------------|:--------|
-| `#alerte <texte>` | Déclenche une alerte secours | `#alerte Rassemblement hall sportif` |
+| `#alerte <texte>` | Alerte secours (tous Bippers) | `#alerte Rassemblement hall sportif` |
 | `#secours <texte>` | Synonyme alerte | `#secours Renforts secteur Nord` |
+| `#T1`…`#T4 <texte>` | Alerte si tag local = Tn | `#T1 Intervention` |
+| `#tag <0-4>` | Tag service persistant | `#tag 1` |
+| `#Info` / `#info <texte>` | 3× pim-pom, pas d'écran alerte | `#info Fin exercice` |
 | `#fin` | Fin d'alerte, retour normal | `#fin` |
-| `#b <n>` | Nombre de bips (0 = continu) | `#b 5` |
+| `#b <n>` | Enregistre réglage NVS (legacy) | `#b 5` |
 | `#code <ancien> <nouveau>` | Change le code d'activation | `#code GAULIX GAULIX26` |
 | `#status` | État du pager | `#status` |
 
@@ -194,6 +200,6 @@ La solution reste **auto-hébergeable** au sens mesh : aucun abonnement, aucun s
 <table width="100%">
 <tr>
 <td align="left"><em>Révision #1</em></td>
-<td align="right"><em>Créé le 06/07/2026 — Réseau Gaulix</em></td>
+<td align="right"><em>Révision #3 — 13/07/2026 — Implémentation v1.6</em></td>
 </tr>
 </table>

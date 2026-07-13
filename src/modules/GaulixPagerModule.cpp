@@ -11,10 +11,20 @@
 #include "SafeFile.h"
 #include "buzz.h"
 #include "gps/RTC.h"
+#if !MESHTASTIC_EXCLUDE_GPS
+#include "GPSStatus.h"
+#endif
 #include "graphics/Screen.h"
 #include "graphics/ScreenFonts.h"
 #include "main.h"
+#include "mesh/MeshModule.h"
+#include "mesh/PositionPrecision.h"
 #include "mesh/Throttle.h"
+#if !MESHTASTIC_EXCLUDE_GPS
+#include "gps/GPS.h"
+#include "modules/PositionModule.h"
+#endif
+#include "meshUtils.h"
 #include <NonBlockingRtttl.h>
 #include <cctype>
 #include <cstdlib>
@@ -22,6 +32,41 @@
 #include <ctime>
 
 static const char *GAULIX_PAGER_CONFIG_FILE = "/prefs/gaulixpager.cfg";
+
+static constexpr const char *GAULIX_DEFAULT_OWNER_NAME = "Bipper de demo";
+
+static bool gaulixOwnerNameIsFactoryDefault()
+{
+    if (!owner.long_name[0]) {
+        return true;
+    }
+    if (strncmp(owner.long_name, "Meshtastic ", 11) == 0) {
+        return true;
+    }
+    if (strncmp(owner.long_name, "42BIP_", 6) == 0) {
+        return true;
+    }
+    if (strstr(owner.long_name, "CHANGER") != nullptr || strstr(owner.long_name, "ATTENTION") != nullptr) {
+        return true;
+    }
+    return false;
+}
+
+static void applyGaulixOwnerNameDefaults()
+{
+    if (!gaulixOwnerNameIsFactoryDefault()) {
+        return;
+    }
+
+    snprintf(owner.long_name, sizeof(owner.long_name), "%s", GAULIX_DEFAULT_OWNER_NAME);
+    clampLongName(owner.long_name);
+
+    meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(nodeDB->getNodeNum());
+    if (node) {
+        strncpy(node->long_name, owner.long_name, sizeof(node->long_name) - 1);
+        node->long_name[sizeof(node->long_name) - 1] = '\0';
+    }
+}
 
 GaulixPagerModule *gaulixPagerModule = nullptr;
 
@@ -35,15 +80,25 @@ meshtastic_MeshPacket GaulixPagerModule::alertSourcePacket = meshtastic_MeshPack
 bool GaulixPagerModule::hasAlertSourcePacket = false;
 char GaulixPagerModule::activationCode[32] = GAULIX_DEFAULT_ACTIVATION_CODE;
 uint8_t GaulixPagerModule::configuredBeepCount = GaulixPagerModule::DEFAULT_BEEP_COUNT;
+uint8_t GaulixPagerModule::configuredServiceTag = 0;
 uint32_t GaulixPagerModule::alertStartedMs = 0;
 uint32_t GaulixPagerModule::lastContinuousBeepMs = 0;
+uint32_t GaulixPagerModule::lastLowBatteryBeepMs = 0;
+bool GaulixPagerModule::lowBatteryWarningActive = false;
 bool GaulixPagerModule::ledBlinkState = false;
+GaulixPagerModule::AlertHistoryEntry GaulixPagerModule::alertHistory[GaulixPagerModule::ALERT_HISTORY_MAX] = {};
+size_t GaulixPagerModule::alertHistoryCount = 0;
+size_t GaulixPagerModule::alertHistoryHead = 0;
+size_t GaulixPagerModule::alertHistoryScrollIndex = 0;
+size_t GaulixPagerModule::currentAlertHistoryPhysIdx = SIZE_MAX;
 GaulixPagerModule::SeenPacket GaulixPagerModule::seenPackets[GaulixPagerModule::ALERT_PACKET_DEDUP_SIZE] = {};
 size_t GaulixPagerModule::seenPacketIndex = 0;
 
 GaulixPagerModule::GaulixPagerModule()
     : SinglePortModule("gaulixpager", meshtastic_PortNum_TEXT_MESSAGE_APP), concurrency::OSThread("GaulixPager")
 {
+    alertCount = 0;
+    lastAlertTime = 0;
     isPromiscuous = true;
     requestFocus();
     // Force pager alerting defaults on each boot so stale persisted settings
@@ -63,12 +118,14 @@ GaulixPagerModule::GaulixPagerModule()
     // Force EU 868 MHz on every boot; stale persisted region breaks Gaulix mesh interoperability.
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
     config.lora.tx_enabled = true;
+    applyGaulixOwnerNameDefaults();
     loadConfig();
 #if !defined(MESHTASTIC_EXCLUDE_INPUTBROKER)
     if (inputBroker) {
         inputObserver.observe(inputBroker);
     }
 #endif
+    setIntervalFromNow(LOW_BATTERY_CHECK_MS);
 }
 
 void GaulixPagerModule::loadConfig()
@@ -76,6 +133,7 @@ void GaulixPagerModule::loadConfig()
     strncpy(activationCode, GAULIX_DEFAULT_ACTIVATION_CODE, sizeof(activationCode) - 1);
     activationCode[sizeof(activationCode) - 1] = '\0';
     configuredBeepCount = DEFAULT_BEEP_COUNT;
+    configuredServiceTag = 0;
 
 #ifdef FSCom
     auto file = FSCom.open(GAULIX_PAGER_CONFIG_FILE, FILE_O_READ);
@@ -96,6 +154,13 @@ void GaulixPagerModule::loadConfig()
             configuredBeepCount = static_cast<uint8_t>(beepCount);
         }
     }
+
+    if (file.available()) {
+        const long serviceTag = file.parseInt();
+        if (serviceTag >= 0 && serviceTag <= 4) {
+            configuredServiceTag = static_cast<uint8_t>(serviceTag);
+        }
+    }
     file.close();
 #endif
 }
@@ -105,7 +170,7 @@ bool GaulixPagerModule::saveConfig()
 #ifdef FSCom
     SafeFile file(GAULIX_PAGER_CONFIG_FILE, true);
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s\n%u\n", activationCode, configuredBeepCount);
+    snprintf(buf, sizeof(buf), "%s\n%u\n%u\n", activationCode, configuredBeepCount, configuredServiceTag);
     file.write(reinterpret_cast<const uint8_t *>(buf), strlen(buf));
     return file.close();
 #else
@@ -134,6 +199,82 @@ void GaulixPagerModule::recordAlert()
     lastAlertTime = getTime();
 }
 
+size_t GaulixPagerModule::getAlertHistoryCount()
+{
+    return alertHistoryCount;
+}
+
+bool GaulixPagerModule::getAlertHistoryEntry(size_t index, AlertHistoryEntry &out)
+{
+    if (index >= alertHistoryCount) {
+        return false;
+    }
+    const size_t phys = (alertHistoryHead + ALERT_HISTORY_MAX - 1 - index) % ALERT_HISTORY_MAX;
+    out = alertHistory[phys];
+    return true;
+}
+
+size_t GaulixPagerModule::getAlertHistoryScrollIndex()
+{
+    return alertHistoryScrollIndex;
+}
+
+void GaulixPagerModule::scrollAlertHistory(int delta)
+{
+    if (alertHistoryCount == 0) {
+        return;
+    }
+    if (delta < 0 && alertHistoryScrollIndex > 0) {
+        alertHistoryScrollIndex--;
+    } else if (delta > 0 && alertHistoryScrollIndex + 1 < alertHistoryCount) {
+        alertHistoryScrollIndex++;
+    }
+}
+
+void GaulixPagerModule::addAlertHistoryEntry(const char *text, const meshtastic_MeshPacket &mp, bool isInfo)
+{
+    AlertHistoryEntry &entry = alertHistory[alertHistoryHead];
+    memset(&entry, 0, sizeof(entry));
+    entry.time = getTime();
+    entry.from = getFrom(&mp);
+    entry.viaDm = isToUs(&mp) && !isBroadcast(mp.to);
+    entry.isInfo = isInfo;
+    if (text && text[0]) {
+        strncpy(entry.text, text, sizeof(entry.text) - 1);
+    } else if (isInfo) {
+        strncpy(entry.text, "Message info", sizeof(entry.text) - 1);
+    } else {
+        strncpy(entry.text, "Alerte secours", sizeof(entry.text) - 1);
+    }
+
+    if (!isInfo) {
+        currentAlertHistoryPhysIdx = alertHistoryHead;
+    }
+    alertHistoryHead = (alertHistoryHead + 1) % ALERT_HISTORY_MAX;
+    if (alertHistoryCount < ALERT_HISTORY_MAX) {
+        alertHistoryCount++;
+    }
+    alertHistoryScrollIndex = 0;
+}
+
+void GaulixPagerModule::markCurrentAlertHistoryAcknowledged()
+{
+    if (currentAlertHistoryPhysIdx >= ALERT_HISTORY_MAX) {
+        return;
+    }
+    alertHistory[currentAlertHistoryPhysIdx].acknowledged = true;
+}
+
+void GaulixPagerModule::markCurrentAlertHistoryTimedOut()
+{
+    if (currentAlertHistoryPhysIdx >= ALERT_HISTORY_MAX) {
+        return;
+    }
+    if (!alertHistory[currentAlertHistoryPhysIdx].acknowledged) {
+        alertHistory[currentAlertHistoryPhysIdx].timedOut = true;
+    }
+}
+
 int GaulixPagerModule::findAlerteChannelIndex()
 {
     for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
@@ -143,6 +284,17 @@ int GaulixPagerModule::findAlerteChannelIndex()
         }
     }
     return -1;
+}
+
+int GaulixPagerModule::findBaliseChannelIndex()
+{
+    for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
+        const meshtastic_Channel &ch = channels.getByIndex(i);
+        if (ch.settings.name[0] && strcmp(ch.settings.name, "Fr_Balise") == 0) {
+            return i;
+        }
+    }
+    return 0;
 }
 
 bool GaulixPagerModule::isAcceptedPacket(const meshtastic_MeshPacket &mp)
@@ -308,6 +460,81 @@ bool GaulixPagerModule::parseAlertWithText(const char *msg, const char *keyword,
     return true;
 }
 
+bool GaulixPagerModule::parseInfoCommand(const char *msg, const char **outText)
+{
+    msg = skipSpaces(msg);
+    if (!msg || !outText) {
+        return false;
+    }
+
+    if (strncmp(msg, "#Info", 5) != 0 && strncmp(msg, "#info", 5) != 0) {
+        return false;
+    }
+
+    if (msg[5] != '\0' && !std::isspace(static_cast<unsigned char>(msg[5]))) {
+        return false;
+    }
+
+    const char *text = skipSpaces(msg + 5);
+    *outText = text ? text : "";
+    return true;
+}
+
+bool GaulixPagerModule::parseTagSetCommand(const char *msg, uint8_t *outTag)
+{
+    msg = skipSpaces(msg);
+    if (!msg || strncmp(msg, "#tag", 4) != 0 || (msg[4] != '\0' && !std::isspace(static_cast<unsigned char>(msg[4])))) {
+        return false;
+    }
+
+    const char *arg = skipSpaces(msg + 4);
+    if (!arg || !arg[0]) {
+        return false;
+    }
+
+    char *end = nullptr;
+    const long value = strtol(arg, &end, 10);
+    if (end == arg || (end && *skipSpaces(end) != '\0') || value < 0 || value > 4) {
+        return false;
+    }
+
+    *outTag = static_cast<uint8_t>(value);
+    return true;
+}
+
+bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, const char **outText)
+{
+    msg = skipSpaces(msg);
+    if (!msg || !outTag || !outText || msg[0] != '#' || msg[1] != 'T') {
+        return false;
+    }
+
+    if (msg[2] < '1' || msg[2] > '4') {
+        return false;
+    }
+
+    if (msg[3] != '\0' && !std::isspace(static_cast<unsigned char>(msg[3]))) {
+        return false;
+    }
+
+    *outTag = static_cast<uint8_t>(msg[2] - '0');
+    const char *text = skipSpaces(msg + 3);
+    if (!text || !text[0]) {
+        return false;
+    }
+
+    *outText = text;
+    return true;
+}
+
+bool GaulixPagerModule::serviceTagMatches(uint8_t tag)
+{
+    if (tag < 1 || tag > 4) {
+        return false;
+    }
+    return configuredServiceTag == tag;
+}
+
 bool GaulixPagerModule::activationCodeMatches(const char *code)
 {
     return code && code[0] && strcmp(code, activationCode) == 0;
@@ -351,10 +578,13 @@ int8_t GaulixPagerModule::alertLedPin()
 #endif
 }
 
-void GaulixPagerModule::playBeeps(uint8_t count)
+void GaulixPagerModule::playPimPoms(uint8_t count)
 {
     for (uint8_t i = 0; i < count; i++) {
-        playGaulixPagerBeep();
+        playGaulixPagerPimPom();
+        if (i + 1 < count) {
+            delay(GAULIX_BUZZER_PULSE_GAP_MS);
+        }
     }
 }
 
@@ -370,30 +600,36 @@ void GaulixPagerModule::drawAlertFrame(OLEDDisplay *display, OLEDDisplayUiState 
     display->clear();
 
     const int16_t centerX = x + display->getWidth() / 2;
+    const int16_t bottomY = y + display->getHeight() - FONT_HEIGHT_SMALL - 2;
 
     display->setTextAlignment(TEXT_ALIGN_CENTER);
+    int16_t textY = y + 18;
     display->setFont(FONT_MEDIUM);
-    display->drawString(centerX, y + 2, "ALERTE");
-
+    const char *title = "ALERTE SECOURS";
+    if (display->getStringWidth(title) > display->getWidth()) {
+        display->setFont(FONT_SMALL);
+        textY = y + 14;
+    }
+    display->drawString(centerX, y + 2, title);
     display->setFont(FONT_SMALL);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
     if (alertText[0]) {
-        display->drawStringMaxWidth(x + 2, y + 20, display->getWidth() - 4, alertText);
+        display->drawStringMaxWidth(x + 2, textY, display->getWidth() - 4, alertText);
     }
 
     if (lastAlertTime != 0) {
         time_t t = lastAlertTime;
         struct tm *tmInfo = localtime(&t);
         if (tmInfo) {
-            char timeBuf[16];
-            strftime(timeBuf, sizeof(timeBuf), "%H:%M", tmInfo);
-            display->setTextAlignment(TEXT_ALIGN_RIGHT);
-            display->drawString(x + display->getWidth() - 2, y + display->getHeight() - FONT_HEIGHT_SMALL - 10, timeBuf);
+            char timeBuf[20];
+            strftime(timeBuf, sizeof(timeBuf), "%d/%m %H:%M", tmInfo);
+            display->setTextAlignment(TEXT_ALIGN_CENTER);
+            display->drawString(centerX, bottomY - FONT_HEIGHT_SMALL - 2, timeBuf);
         }
     }
 
     display->setTextAlignment(TEXT_ALIGN_CENTER);
-    display->drawString(centerX, y + display->getHeight() - FONT_HEIGHT_SMALL - 2, "Appui = acquitter");
+    display->drawString(centerX, bottomY, "Appui = acquitter");
 }
 
 void GaulixPagerModule::showAlertScreen()
@@ -419,21 +655,17 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     hasAlertSourcePacket = true;
 
     recordAlert();
+    addAlertHistoryEntry(alertText, mp);
     alertActive = true;
     ledBlinkState = false;
     alertStartedMs = millis();
     lastContinuousBeepMs = alertStartedMs;
 
     const char *via = isBroadcast(mp.to) ? "broadcast canal Alerte" : "DM bipper";
-    LOG_INFO("GaulixPager: alerte '%s' via %s de 0x%08x ch %u bips=%u", alertText, via, alertSourceNode, alertSourceChannel,
-             configuredBeepCount);
+    LOG_INFO("GaulixPager: alerte '%s' via %s de 0x%08x ch %u", alertText, via, alertSourceNode, alertSourceChannel);
 
     prepareBuzzerForAlert();
-    if (configuredBeepCount == 0) {
-        playBeep();
-    } else {
-        playBeeps(configuredBeepCount);
-    }
+    playGaulixPagerPimPom();
     showAlertScreen();
 
     const int8_t ledPin = alertLedPin();
@@ -447,19 +679,18 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
 
 void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char *text)
 {
-    if (!text || !rx.from || rx.from == NODENUM_BROADCAST) {
+    const NodeNum dest = getFrom(&rx);
+    if (!text || !dest || dest == NODENUM_BROADCAST) {
         LOG_WARN("GaulixPager: pas de destinataire pour reponse DM");
         return;
     }
 
     meshtastic_MeshPacket *p = allocDataPacket();
-    p->to = rx.from;
-    p->channel = rx.channel;
+    setReplyTo(p, rx);
     p->want_ack = false;
     p->decoded.want_response = false;
-    p->decoded.dest = rx.from;
 
-    meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(rx.from);
+    meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(dest);
     const NodeNum myNodeNum = nodeDB->getNodeNum();
     if (node && node->num != myNodeNum && nodeInfoLiteHasUser(node) && node->public_key.size == 32) {
         p->pki_encrypted = true;
@@ -471,7 +702,7 @@ void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char 
     memcpy(p->decoded.payload.bytes, text, len);
 
     service->sendToMesh(p, RX_SRC_LOCAL, true);
-    LOG_INFO("GaulixPager: DM vers 0x%08x ch %u", rx.from, p->channel);
+    LOG_INFO("GaulixPager: DM vers 0x%08x ch %u (source ch %u)", dest, p->channel, rx.channel);
 }
 
 void GaulixPagerModule::sendAckDm()
@@ -481,25 +712,109 @@ void GaulixPagerModule::sendAckDm()
         return;
     }
 
-    char timeBuf[8] = "--:--";
+    char timeBuf[20] = "--/-- --:--";
     time_t t = getTime();
     struct tm *tmInfo = localtime(&t);
     if (tmInfo) {
-        strftime(timeBuf, sizeof(timeBuf), "%H:%M", tmInfo);
+        strftime(timeBuf, sizeof(timeBuf), "%d/%m %H:%M", tmInfo);
     }
 
-    char reply[64];
-    snprintf(reply, sizeof(reply), "Pager ACK alerte %s", timeBuf);
+    char reply[200];
+    int replyLen = snprintf(reply, sizeof(reply), "Pager ACK alerte %s", timeBuf);
+    if (replyLen < 0) {
+        return;
+    }
+    if (alertText[0]) {
+        snprintf(reply + replyLen, sizeof(reply) - replyLen, " — %s", alertText);
+    }
+    replyLen = strnlen(reply, sizeof(reply));
+
+#if !MESHTASTIC_EXCLUDE_GPS
+    if (config.position.gps_mode == meshtastic_Config_PositionConfig_GpsMode_ENABLED) {
+        int32_t latI = localPosition.latitude_i;
+        int32_t lonI = localPosition.longitude_i;
+        if (latI == 0 && lonI == 0 && gpsStatus) {
+            latI = gpsStatus->getLatitude();
+            lonI = gpsStatus->getLongitude();
+        }
+        if (latI != 0 || lonI != 0) {
+            const double lat = latI * 1e-7;
+            const double lon = lonI * 1e-7;
+            snprintf(reply + replyLen, sizeof(reply) - replyLen, " | %.5f%c %.5f%c", fabs(lat), lat >= 0 ? 'N' : 'S',
+                     fabs(lon), lon >= 0 ? 'E' : 'W');
+        }
+    }
+#endif
 
     if (hasAlertSourcePacket) {
         sendReplyDm(alertSourcePacket, reply);
     } else {
         meshtastic_MeshPacket ackTarget = meshtastic_MeshPacket_init_zero;
+        ackTarget.which_payload_variant = meshtastic_MeshPacket_decoded_tag;
         ackTarget.from = alertSourceNode;
         ackTarget.channel = alertSourceChannel;
         sendReplyDm(ackTarget, reply);
     }
     LOG_INFO("GaulixPager: ACK vers 0x%08x ch %u", alertSourceNode, alertSourceChannel);
+}
+
+void GaulixPagerModule::sendAckPositionOnBalise()
+{
+#if MESHTASTIC_EXCLUDE_GPS
+    return;
+#else
+    if (!positionModule) {
+        return;
+    }
+    if (config.position.gps_mode != meshtastic_Config_PositionConfig_GpsMode_ENABLED) {
+        LOG_DEBUG("GaulixPager: position ACK ignoree — GPS desactive");
+        return;
+    }
+
+    service->refreshLocalMeshNode();
+
+#if HAS_GPS
+    if (gps && gpsStatus && gpsStatus->getHasLock()) {
+        meshtastic_Position pos = gps->p;
+        pos.time = getValidTime(RTCQualityFromNet);
+        nodeDB->updatePosition(nodeDB->getNodeNum(), pos, RX_SRC_LOCAL);
+    }
+#endif
+
+    int32_t latI = localPosition.latitude_i;
+    int32_t lonI = localPosition.longitude_i;
+    if (latI == 0 && lonI == 0 && gpsStatus) {
+        latI = gpsStatus->getLatitude();
+        lonI = gpsStatus->getLongitude();
+        if (latI != 0 || lonI != 0) {
+            meshtastic_Position pos = meshtastic_Position_init_default;
+            pos.latitude_i = latI;
+            pos.longitude_i = lonI;
+            pos.has_latitude_i = true;
+            pos.has_longitude_i = true;
+            pos.time = getValidTime(RTCQualityFromNet);
+            nodeDB->updatePosition(nodeDB->getNodeNum(), pos, RX_SRC_LOCAL);
+        }
+    }
+
+    if (localPosition.latitude_i == 0 && localPosition.longitude_i == 0) {
+        LOG_WARN("GaulixPager: position ACK ignoree — pas de fix GPS");
+        return;
+    }
+
+    const int baliseCh = findBaliseChannelIndex();
+    if (baliseCh < 0) {
+        LOG_WARN("GaulixPager: canal Fr_Balise introuvable");
+        return;
+    }
+    if (getPositionPrecisionForChannel(static_cast<uint8_t>(baliseCh)) == 0) {
+        LOG_WARN("GaulixPager: Fr_Balise sans precision position");
+        return;
+    }
+
+    LOG_INFO("GaulixPager: broadcast position ACK sur Fr_Balise ch %d", baliseCh);
+    positionModule->sendOurPosition(NODENUM_BROADCAST, false, static_cast<uint8_t>(baliseCh));
+#endif
 }
 
 void GaulixPagerModule::sendStatusReply(const meshtastic_MeshPacket &mp)
@@ -516,8 +831,10 @@ void GaulixPagerModule::sendStatusReply(const meshtastic_MeshPacket &mp)
     }
 
     char reply[160];
-    snprintf(reply, sizeof(reply), "Pager Gaulix - %s | Alertes: %lu | %s | Bips: %s | Code: %s",
-             alertActive ? "En alerte" : "En ecoute", static_cast<unsigned long>(alertCount), batteryLine, bipsLine,
+    char tagLine[16];
+    formatServiceTagLine(tagLine, sizeof(tagLine));
+    snprintf(reply, sizeof(reply), "Pager Gaulix - %s | Alertes: %lu | %s | Bips: %s | %s | Code: %s",
+             alertActive ? "En alerte" : "En ecoute", static_cast<unsigned long>(alertCount), batteryLine, bipsLine, tagLine,
              activationCode);
 
     sendReplyDm(mp, reply);
@@ -551,6 +868,8 @@ void GaulixPagerModule::acknowledgeAlert()
     }
 
     sendAckDm();
+    sendAckPositionOnBalise();
+    markCurrentAlertHistoryAcknowledged();
     clearAlert(false);
     playGaulixPagerFinBeep();
 }
@@ -562,6 +881,10 @@ void GaulixPagerModule::clearAlert(bool playFinMelody)
     }
 
     LOG_INFO("GaulixPager: fin d'alerte");
+
+    if (alertActive) {
+        markCurrentAlertHistoryTimedOut();
+    }
 
     alertActive = false;
     alertSourceNode = 0;
@@ -637,6 +960,40 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::STOP;
     }
 
+    const char *infoText = nullptr;
+    if (parseInfoCommand(buf, &infoText)) {
+        LOG_INFO("GaulixPager: info '%s' (sans alerte)", infoText && infoText[0] ? infoText : "");
+        addAlertHistoryEntry(infoText, mp, true);
+        prepareBuzzerForAlert();
+        playPimPoms(INFO_PIM_POM_COUNT);
+        return ProcessMessage::STOP;
+    }
+
+    uint8_t tagSet = 0;
+    if (parseTagSetCommand(buf, &tagSet)) {
+        configuredServiceTag = tagSet;
+        saveConfig();
+        char reply[48];
+        if (tagSet == 0) {
+            snprintf(reply, sizeof(reply), "Pager OK — tag: aucun");
+        } else {
+            snprintf(reply, sizeof(reply), "Pager OK — tag: T%u", tagSet);
+        }
+        sendReplyDm(mp, reply);
+        return ProcessMessage::STOP;
+    }
+
+    uint8_t serviceTag = 0;
+    const char *tagAlertText = nullptr;
+    if (parseServiceTagAlert(buf, &serviceTag, &tagAlertText)) {
+        if (!serviceTagMatches(serviceTag)) {
+            LOG_DEBUG("GaulixPager: T%u ignore (local T%u)", serviceTag, configuredServiceTag);
+            return ProcessMessage::STOP;
+        }
+        triggerAlert(tagAlertText, mp);
+        return ProcessMessage::STOP;
+    }
+
     const char *alertTextArg = nullptr;
     const bool isAlerte = parseAlertWithText(buf, "#alerte", &alertTextArg);
     const bool isSecours = !isAlerte && parseAlertWithText(buf, "#secours", &alertTextArg);
@@ -662,6 +1019,31 @@ int GaulixPagerModule::handleInputEvent(const InputEvent *event)
     return 0;
 }
 
+int32_t GaulixPagerModule::maintainBatteryWarning()
+{
+    if (!powerStatus || !powerStatus->getHasBattery() || powerStatus->getIsCharging() || powerStatus->getHasUSB()) {
+        lowBatteryWarningActive = false;
+        return LOW_BATTERY_CHECK_MS;
+    }
+
+    const uint8_t pct = powerStatus->getBatteryChargePercent();
+    if (pct == 0 || pct > LOW_BATTERY_THRESHOLD_PCT) {
+        lowBatteryWarningActive = false;
+        return LOW_BATTERY_CHECK_MS;
+    }
+
+    const bool firstEntry = !lowBatteryWarningActive;
+    const bool repeatDue = !Throttle::isWithinTimespanMs(lastLowBatteryBeepMs, LOW_BATTERY_REPEAT_MS);
+    if (firstEntry || repeatDue) {
+        lowBatteryWarningActive = true;
+        lastLowBatteryBeepMs = millis();
+        playGaulixLowBatteryBeep();
+        LOG_INFO("GaulixPager: batterie faible (%u%%)", pct);
+    }
+
+    return LOW_BATTERY_CHECK_MS;
+}
+
 int32_t GaulixPagerModule::runOnce()
 {
     const int8_t ledPin = alertLedPin();
@@ -670,14 +1052,25 @@ int32_t GaulixPagerModule::runOnce()
         if (ledPin >= 0) {
             digitalWrite(ledPin, LOW);
         }
-        return INT32_MAX;
+        return maintainBatteryWarning();
     }
 
-    if (configuredBeepCount == 0 &&
-        !Throttle::isWithinTimespanMs(lastContinuousBeepMs, CONTINUOUS_BEEP_INTERVAL_MS)) {
+    if (!Throttle::isWithinTimespanMs(alertStartedMs, ALERT_MAX_DURATION_MS)) {
+        LOG_INFO("GaulixPager: alerte expiree apres 30 min sans acquittement");
+        clearAlert(false);
+        return LOW_BATTERY_CHECK_MS;
+    }
+
+    static uint32_t lastAlertScreenRefreshMs = 0;
+    if (!Throttle::isWithinTimespanMs(lastAlertScreenRefreshMs, 3000)) {
+        lastAlertScreenRefreshMs = millis();
+        showAlertScreen();
+    }
+
+    if (!Throttle::isWithinTimespanMs(lastContinuousBeepMs, CONTINUOUS_BEEP_INTERVAL_MS)) {
         lastContinuousBeepMs = millis();
         prepareBuzzerForAlert();
-        playGaulixPagerBeep();
+        playGaulixPagerPimPom();
     }
 
     if (ledPin >= 0) {
@@ -732,37 +1125,83 @@ void GaulixPagerModule::formatLastAlertLine(char *buf, size_t len)
     snprintf(buf, len, "Dernière : %s", timeBuf);
 }
 
+void GaulixPagerModule::formatServiceTagLine(char *buf, size_t len)
+{
+    if (configuredServiceTag == 0) {
+        snprintf(buf, len, "Tag: aucun");
+        return;
+    }
+    snprintf(buf, len, "Tag: T%u", configuredServiceTag);
+}
+
+static bool gaulixOwnerNameFitsOnLine(OLEDDisplay *display)
+{
+    if (!owner.long_name[0] || !display) {
+        return false;
+    }
+    display->setFont(FONT_SMALL);
+    return display->getStringWidth(owner.long_name) <= display->getWidth() - 4;
+}
+
+void GaulixPagerModule::formatStatusLine(char *buf, size_t len, OLEDDisplay *display)
+{
+    if (!owner.long_name[0]) {
+        snprintf(buf, len, "%s", alertActive ? "En alerte" : "En \u00e9coute");
+        return;
+    }
+    if (display && !gaulixOwnerNameFitsOnLine(display)) {
+        snprintf(buf, len, "Nom long : !!!trop long");
+        return;
+    }
+    snprintf(buf, len, "%s", owner.long_name);
+}
+
 void GaulixPagerModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *state, int16_t x, int16_t y)
 {
     display->clear();
 
-    int16_t lineY = y + 2;
-
-    display->setTextAlignment(TEXT_ALIGN_CENTER);
-    display->setFont(FONT_MEDIUM);
-    if (display->getStringWidth(GAULIX_PAGER_TITLE) > display->getWidth()) {
-        display->setFont(FONT_SMALL);
-        display->drawString(x + display->getWidth() / 2, lineY, GAULIX_PAGER_TITLE);
-        lineY += FONT_HEIGHT_SMALL + 1;
-    } else {
-        display->drawString(x + display->getWidth() / 2, lineY, GAULIX_PAGER_TITLE);
-        lineY += FONT_HEIGHT_MEDIUM + 1;
-    }
-
     display->setFont(FONT_SMALL);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
-    char lineBuf[32];
-    snprintf(lineBuf, sizeof(lineBuf), "Alerte(s) : %lu", static_cast<unsigned long>(alertCount));
-    display->drawString(x + 2, lineY, lineBuf);
-    lineY += FONT_HEIGHT_SMALL + 1;
 
-    formatLastAlertLine(lineBuf, sizeof(lineBuf));
-    display->drawString(x + 2, lineY, lineBuf);
-    lineY += FONT_HEIGHT_SMALL + 1;
+    const int16_t lineStep = FONT_HEIGHT_SMALL + 2;
+    int16_t lineY = y + 2;
+    char lineBuf[48];
 
-    formatBatteryLine(lineBuf, sizeof(lineBuf));
+    // Ligne 1 : nom long du Bipper (ou avertissement si trop large)
+    if (!owner.long_name[0]) {
+        display->drawString(x + 2, lineY, "En \u00e9coute");
+    } else if (gaulixOwnerNameFitsOnLine(display)) {
+        display->drawString(x + 2, lineY, owner.long_name);
+    } else {
+        display->drawString(x + 2, lineY, "Nom long : !!!trop long");
+    }
+    lineY += lineStep;
+
+    // Ligne 2 : nombre d'alertes | dernière alerte
+    char timeBuf[8] = "--:--";
+    if (lastAlertTime != 0) {
+        time_t t = lastAlertTime;
+        struct tm *tmInfo = localtime(&t);
+        if (tmInfo) {
+            strftime(timeBuf, sizeof(timeBuf), "%H:%M", tmInfo);
+        }
+    }
+    snprintf(lineBuf, sizeof(lineBuf), "Nb AL. : %lu | Der. : %s", static_cast<unsigned long>(alertCount), timeBuf);
+    display->drawStringMaxWidth(x + 2, lineY, display->getWidth() - 4, lineBuf);
+    lineY += lineStep;
+
+    // Ligne 3 : Bipper Gaulix + version
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->drawString(x + display->getWidth() / 2, lineY, GAULIX_PAGER_TITLE);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
+    lineY += lineStep;
+
+    // Ligne 4 : batterie + acces historique
+    formatBatteryLine(lineBuf, sizeof(lineBuf));
     display->drawString(x + 2, lineY, lineBuf);
+    display->setTextAlignment(TEXT_ALIGN_RIGHT);
+    display->drawString(x + display->getWidth() - 2, lineY, "Trackball >");
+    display->setTextAlignment(TEXT_ALIGN_LEFT);
 }
 
 #endif

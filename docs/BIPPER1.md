@@ -7,7 +7,7 @@
 | **Environnement PlatformIO** | `seeed_wio_tracker_L1` |
 | **Dépôt** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Base upstream** | [meshtastic/firmware](https://github.com/meshtastic/firmware) |
-| **État actuel** | Phase 1 amorcée — écran d'accueil pager + canaux Gaulix par défaut |
+| **État actuel** | **Gaulix Bipper v1.6** — pager secours opérationnel (alertes, son, acquittement, ACK, historique, alarme batterie) |
 | **Documents liés** | [Cahier des charges](cahier-des-charges-bip-alerte-gaulix.md) · [Roadmap phases](propositions-phases-bip-gaulix.md) |
 
 ---
@@ -16,16 +16,20 @@
 
 Ce fork transforme un **Seeed Wio Tracker L1 Pro** en terminal **pager d'alerte** pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
 
-L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le cahier des charges : à terme, réception d'une commande `#alerte`, signal sonore et visuel, affichage plein écran, acquittement local et accusé de réception au coordinateur.
+L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.6** couvre la Phase 1 fonctionnelle : commandes `#alerte` / `#secours`, signal pim-pom continu, écran plein page, acquittement, ACK DM avec horodatage et GPS, tags de service T1–T4, historique des alertes, carrousel UI épuré, et alarme sonore batterie faible (10 %).
 
-**À la date de ce document**, le firmware intègre déjà :
+**Fonctionnalités implémentées (v1.6) :**
 
-- l'activation compile-time du mode pager (`GAULIX_PAGER`) sur la variante L1 ;
-- un module UI `GaulixPagerModule` affichant l'écran d'état du bippeur ;
-- la préconfiguration des canaux réseau Gaulix via `userPrefs.jsonc` ;
-- une extension de `Channels.cpp` pour initialiser le canal **Alertes** (index 7).
-
-Les fonctions d'alerte complètes (`#alerte`, buzzer, acquittement, ACK) sont **planifiées** mais **pas encore implémentées** dans le code.
+- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) ;
+- module `GaulixPagerAlertListModule` (historique 20 alertes, défilement Haut/Bas) ;
+- commandes whitelist : `#alerte`, `#secours`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tag`, `#T1`…`#T4` ;
+- son **pim-pom** (2 tons, duty 80 %) en boucle jusqu'à acquittement ; 3 séquences pour `#info` ;
+- son **batterie faible** (10 %, duty 45 %, 1 bip) — répété toutes les 5 min, silencieux si charge USB ;
+- écran alerte **ALERTE SECOURS** + texte + horodatage `JJ/MM HH:MM` ;
+- **ACK** automatique en DM : `Pager ACK alerte JJ/MM HH:MM` (+ position GPS sur **Fr_Balise** si activée) ;
+- canaux **muets** sauf **Alerte** ; région **EU868** forcée à chaque boot ;
+- carrousel trackball : pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées ;
+- 40 messages prédéfinis Gaulix (CannedMessage) ; nom usine `Bipper de demo`.
 
 ---
 
@@ -38,26 +42,31 @@ Les fonctions d'alerte complètes (`#alerte`, buzzer, acquittement, ACK) sont **
   (app Meshtastic)         ──────────────────────────►         (seeed_wio_tracker_L1)
         ▲                                                              │
         │                                                              │
-        └──────────────── ACK « alerte reçue » ────────────────────────┘
-                                      (prévu Phase 1)
+        └──────────────── Pager ACK alerte JJ/MM HH:MM ─────────────────────┘
+                                      (+ GPS si activé)
 ```
 
-1. Le coordinateur envoie un message depuis l'application Meshtastic (DM ou canal **Alertes**).
-2. Le pager reçoit le paquet LoRa, le déchiffre et le traite *(traitement alerte : à venir)*.
-3. L'opérateur voit l'alerte à l'écran, entend le buzzer et acquitte *(à venir)*.
-4. Un accusé de réception est renvoyé en message direct *(à venir)*.
+1. Le coordinateur envoie une commande depuis l'app Meshtastic (DM ou canal **Alerte**).
+2. Le pager reçoit le paquet, filtre la whitelist (`#alerte`, `#secours`, `#T1`…`#T4`, etc.).
+3. L'opérateur entend le **pim-pom** en boucle, voit l'écran **ALERTE SECOURS** et acquitte (trackball).
+4. Un **ACK** DM est renvoyé à l'émetteur avec horodatage et position GPS (si GPS activé).
 
-### Comportement actuel (implémenté)
+### Comportement actuel (v1.6)
 
 | Composant | Comportement |
 |:----------|:-------------|
-| **Compilation** | Le flag `-D GAULIX_PAGER=1` est injecté uniquement pour `seeed_wio_tracker_L1`. |
-| **GaulixPagerModule** | Instancié au démarrage si `GAULIX_PAGER && HAS_SCREEN`. |
-| **Écran Etat_bipper** | Frame UI Meshtastic affichée dans la rotation d'écrans standard (trackball). |
-| **Réseau** | Fonctionnement Meshtastic standard : mesh LoRa EU868, canaux préconfigurés au premier boot. |
-| **Alertes** | `recordAlert()` existe mais n'est appelée par aucun autre module ; `wantPacket()` retourne `false`. |
-
-Le pager se comporte donc aujourd'hui comme un nœud Meshtastic L1 Pro avec un **écran d'accueil dédié** et les **canaux Gaulix** en usine, en attendant le branchement de la logique `#alerte`.
+| **Compilation** | `-D GAULIX_PAGER=1` sur `seeed_wio_tracker_L1` uniquement. |
+| **GaulixPagerModule** | `SinglePortModule` promiscuous ; traite les commandes avant `TextMessageModule`. |
+| **Son alerte** | Séquence **pim-pom** (3100 Hz / 2400 Hz, duty 80 %, 220 ms) répétée toutes les 1,5 s jusqu'à acquittement, `#fin` ou timeout 30 min. |
+| **Son info** | `#info` / `#Info` : 3 séquences pim-pom, pas d'écran alerte. |
+| **Son batterie** | À **≤ 10 %** (hors charge USB) : 1 bip doux (2400 Hz, duty 45 %, 120 ms), puis rappel toutes les **5 min**. |
+| **Écran alerte** | Plein page bloqué : ALERTE SECOURS, texte, `JJ/MM HH:MM`, « Appui = acquitter ». |
+| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.6, batterie. |
+| **Historique alertes** | 2ᵉ frame carrousel : 20 dernières alertes (`#alerte`, `#secours`, `#T1`–`#T4`, `#info`), scroll Haut/Bas. |
+| **Carrousel UI** | Pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées (Gaulix uniquement). |
+| **Canaux** | Tous **muets** sauf **Alerte** (réappliqué à chaque boot). |
+| **Compteur alertes** | Incrémenté à chaque alerte ; **remis à zéro** à chaque allumage. |
+| **Persistance** | Code, `#b`, tag service dans `/prefs/gaulixpager.cfg`. |
 
 ### Activation compile-time
 
@@ -80,7 +89,10 @@ Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` po
 | Fichier | Rôle |
 |:--------|:-----|
 | `src/modules/GaulixPagerModule.h` | Déclaration du module pager (UI + compteurs statiques). |
-| `src/modules/GaulixPagerModule.cpp` | Rendu OLED de l'écran d'état bippeur. |
+| `src/modules/GaulixPagerModule.cpp` | Module pager : commandes, UI, son, ACK, NVS, alarme batterie. |
+| `src/modules/GaulixPagerAlertListModule.h` / `.cpp` | Historique des 20 dernières alertes (2ᵉ frame UI). |
+| `src/buzz/buzz.cpp` / `buzz.h` | Sons Gaulix : pim-pom alerte + bip batterie faible. |
+| `src/modules/CannedMessageModule.cpp` | 40 messages prédéfinis Gaulix (usine). |
 | `docs/cahier-des-charges-bip-alerte-gaulix.md` | Spécification fonctionnelle. |
 | `docs/propositions-phases-bip-gaulix.md` | Roadmap par phases. |
 | `docs/BIPPER1.md` | Ce document. |
@@ -90,11 +102,10 @@ Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` po
 | Fichier | Modification |
 |:--------|:-------------|
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1`. |
-| `src/modules/Modules.cpp` | `#include` et `new GaulixPagerModule()` sous `#if defined(GAULIX_PAGER) && HAS_SCREEN`. |
-| `userPrefs.jsonc` | Canaux Gaulix, région EU868, sonnerie RTTTL. |
-| `src/mesh/Channels.cpp` | Support `USERPREFS_CHANNEL_3_*` et `USERPREFS_CHANNEL_7_*` + `initDefaultChannel(7)`. |
-| `src/mesh/NodeDB.cpp` | Clés fork `USERPREFS_CONFIG_LORA_OK_TO_MQTT`, `USERPREFS_CONFIG_DEVICE_REBROADCAST_MODE`, `USERPREFS_CONFIG_DEVICE_NODE_INFO_BROADCAST_SECS` ; nom long Gaulix sous `GAULIX_PAGER`. |
-| `userPrefs.jsonc` | Configuration usine complète Gaulix (LoRa, canaux, rôle, BT, GPS, position). |
+| `src/modules/Modules.cpp` | Enregistrement `GaulixPagerModule` + `GaulixPagerAlertListModule`. |
+| `src/mesh/NodeDB.cpp` | EU868 forcé ; nom long usine `Bipper de demo`. |
+| `src/graphics/Screen.cpp` | Masquage carrousel (Node, Bearings, LoRa, favoris) ; blocage pendant alerte. |
+| `src/graphics/draw/NodeListRenderer.cpp` | Rotation node list désactivée pour Gaulix. |
 
 ### Dépôts Git
 
@@ -152,10 +163,10 @@ Paramètres compilés via `userPrefs.jsonc` et appliqués au **premier boot** ou
 
 | Paramètre | Valeur usine | Mécanisme |
 |:----------|:-------------|:----------|
-| Nom long | `42BIP_LM8CMN-SDIS/XXXX` | `GAULIX_PAGER` : suffixe `%04x` = 4 derniers chiffres hex du node num |
-| Nom court | défaut Meshtastic | `%04x` du node num (non surchargé) |
-
-> **Limite 24 octets** (`MAX_LONG_NAME_BYTES`) : le chemin complet `42BIP_LM8CMN-SDIS/Dept/AASC/ODM/CRF/...` ne tient pas en usine — à compléter via l'app Meshtastic.
+| Nom long | `Bipper de demo` | `USERPREFS_CONFIG_OWNER_LONG_NAME` + réapplication boot si nom usine (`Meshtastic …`, `42BIP_…`) |
+| Nom court | défaut Meshtastic | `%04x` du node num |
+| Affichage OLED | ~18–20 caractères/ligne (128 px) | Si trop large : `Nom long : !!!trop long` |
+| Stockage mesh | **24 octets UTF-8** max | `MAX_LONG_NAME_BYTES` — au-delà : tronqué par `clampLongName()` |
 
 ### Appareil
 
@@ -189,7 +200,7 @@ Paramètres compilés via `userPrefs.jsonc` et appliqués au **premier boot** ou
 
 | Paramètre | Valeur usine | Mécanisme |
 |:----------|:-------------|:----------|
-| Messages | *(placeholder)* | **App** — pas de clé `USERPREFS_*` ; à configurer dans l'app |
+| Messages | 40 messages Gaulix (SSL, AACS, « Reçus (Ack) », etc.) | `GAULIX_FACTORY_CANNED_MESSAGES` — réappliqués au boot |
 
 ### Réglages uniquement via l'app Meshtastic
 
@@ -268,40 +279,52 @@ Les `userPrefs` ne **réécrivent pas** les canaux déjà sauvegardés en flash.
 
 L'écran fonctionnel est désigné **Etat_bipper** : c'est l'écran d'accueil pager montrant l'état d'écoute du terminal.
 
-### Disposition à l'écran (OLED)
+### Disposition à l'écran (OLED 128×64, `FONT_SMALL`)
 
 ```
 ┌─────────────────────────────┐
-│     PAGER Gaulix v1.0       │  ← titre centré (FONT_MEDIUM)
-│  ● En écoute                │  ← pastille + libellé (FONT_SMALL)
-│  Alerte(s) : 0   Dernière : │  ← compteur (gauche) + heure (droite)
-│                    --:--    │
-│  Batterie : 78 %            │  ← ou « USB », « -- », « 45 % + » si charge
+│ Bipper de demo              │  ← L1 : nom long (ou « En écoute »)
+│ Nb AL. : 0 | Der. : --:--   │  ← L2 : compteur | dernière heure
+│      Bipper Gaulix v1.6     │  ← L3 : titre + version (centré)
+│ Batterie : 78 %             │  ← L4 : niveau batterie
+│ Trackball >                 │  ← hint historique alertes (frame 2)
 └─────────────────────────────┘
 ```
 
-| Zone | Source code | Détail |
-|:-----|:------------|:-------|
-| Titre | `drawFrame()` ligne 76 | `"PAGER Gaulix v1.0"` |
-| Pastille verte | `fillCircle()` | Indicateur visuel « en écoute » (statique pour l'instant) |
-| Statut | `"En écoute"` | Pas encore de machine d'états alerte |
-| Compteur | `alertCount` | Incrémenté par `recordAlert()` *(non branché)* |
-| Dernière alerte | `lastAlertTime` | Format `%H:%M` via `localtime()` ; `--:--` si aucune |
-| Batterie | `powerStatus` | Pourcentage, suffixe `+` si en charge, `USB` si alimenté |
+| Zone | Détail |
+|:-----|:-------|
+| Ligne 1 | `owner.long_name` ; si absent → `En écoute` ; si trop large pour l'OLED → `Nom long : !!!trop long` |
+| Ligne 2 | `Nb AL. : N \| Der. : HH:MM` (ou `--:--`) |
+| Ligne 3 | `Bipper Gaulix v1.6` (`GAULIX_PAGER_TITLE`) |
+| Ligne 4 | Batterie %, `USB`, ou `--` |
+| Compteur | Remis à **zéro** à chaque allumage ; `#info` n'incrémente pas |
+| Frame 2 | Historique alertes (`GaulixPagerAlertListModule`) — scroll Haut/Bas |
 
-### API publique (préparée)
+### Écran alerte (plein page)
+
+```
+┌─────────────────────────────┐
+│      ALERTE SECOURS         │
+│  <texte du message>         │
+│       13/07 16:45           │
+│    Appui = acquitter        │
+└─────────────────────────────┘
+```
+
+### API publique
 
 ```cpp
 static uint32_t getAlertCount();
 static uint32_t getLastAlertTime();
-static void recordAlert();  // alertCount++, lastAlertTime = getTime()
+static bool isAlertActive();
+void userAcknowledgeAlert();
 ```
 
-Ces méthodes seront appelées par le futur gestionnaire de commandes `#alerte` dans `handleReceived()`.
+`recordAlert()` est appelé par `triggerAlert()` à chaque alerte `#alerte` / `#secours` / `#T1`…`#T4`.
 
 ### Navigation
 
-L'écran Etat_bipper apparaît dans le carrousel standard Meshtastic (trackball haut/bas sur le L1 Pro). Il n'est pas encore défini comme écran par défaut au démarrage.
+L'écran **Etat_bipper** et l'**historique alertes** apparaissent dans le carrousel Meshtastic (trackball haut/bas). Les pages standard **Node**, **Bearings**, **LoRa** et les favoris `*Node*` sont masquées sur le build Gaulix. Le carrousel automatique est désactivé.
 
 ---
 
@@ -311,12 +334,11 @@ L'écran Etat_bipper apparaît dans le carrousel standard Meshtastic (trackball 
 |:----------|:-------|:------------|
 | MCU | nRF52840 | Exécution firmware, bootloader UF2 |
 | Radio | SX1262 LoRa | Réseau Gaulix EU868 |
-| Écran | OLED SSD1306 | Etat_bipper + alertes plein écran *(à venir)* |
-| Buzzer | D12 (`PIN_BUZZER`) | Alarmes sonores *(à venir)* |
-| LED verte | PIN_LED1 | Signal visuel *(à venir)* |
-| LED bleue | PIN_LED2 | Signal alerte active *(à venir)* |
-| Trackball + bouton | TB_* / D13 | Navigation et acquittement *(à venir)* |
-| GPS L76K | UART | Position dans l'ACK *(à venir)* |
+| Écran | OLED SSD1306 128×64 | Accueil pager + alertes plein écran |
+| Buzzer | D12 (`PIN_BUZZER`) | Alerte : pim-pom PWM 80 %, 3100/2400 Hz ; batterie 10 % : 1 bip 45 % |
+| LED alerte | **PIN_LED1** | Clignotement pendant alerte *(LED2 partageait le buzzer — corrigé)* |
+| Trackball + bouton | TB_* / D13 | Acquittement alerte |
+| GPS L76K | UART | Position dans l'ACK DM si `gps_mode = ENABLED` |
 
 La variante déclare `custom_meshtastic_requires_dfu = true` : le flashage passe par le bootloader **UF2** nRF52.
 
@@ -339,7 +361,7 @@ pio run -e seeed_wio_tracker_L1
 
 | Sortie | Chemin |
 |:-------|:-------|
-| Binaire UF2 | `.pio/build/seeed_wio_tracker_L1/firmware.uf2` |
+| Binaire UF2 | `C:\pio-build\seeed_wio_tracker_L1\firmware-seeed_wio_tracker_L1-2.8.0.*.uf2` |
 | Hex (intermédiaire) | `.pio/build/seeed_wio_tracker_L1/firmware.hex` |
 
 Le script `extra_scripts/nrf52_extra.py` génère automatiquement le `.uf2` depuis le `.hex` via `bin/uf2conv.py`.
@@ -366,35 +388,73 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 1. Allumer le bippeur et le configurer dans l'app Meshtastic (nom du nœud, etc.).
 2. Si l'appareil avait une config antérieure : effectuer un **factory reset** pour appliquer les canaux Gaulix.
 3. Vérifier dans l'app que les canaux `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech` et `Alerte` sont présents.
-4. Faire défiler les écrans OLED jusqu'à l'écran **PAGER Gaulix v1.0**.
+4. L'écran d'accueil **Bipper Gaulix v1.6** s'affiche (frame pager dédiée).
 
 ---
 
-## Fonctionnalités planifiées
+## Commandes implémentées (v1.6)
 
-Roadmap détaillée : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md).
+| Commande | Action | Exemple |
+|:---------|:-------|:--------|
+| `#alerte <texte>` | Alerte secours — tous les Bippers | `#alerte Rassemblement hall` |
+| `#secours <texte>` | Synonyme alerte — tous les Bippers | `#secours Renforts Nord` |
+| `#T1`…`#T4 <texte>` | Alerte si tag local correspond | `#T1 Intervention` |
+| `#tag <0-4>` | Tag service persistant (0 = aucun) | `#tag 1` |
+| `#Info` / `#info <texte>` | 3× pim-pom, log seulement, pas d'écran alerte | `#info Exercice terminé` |
+| `#fin` | Fin d'alerte à distance (2 bips fin) | `#fin` |
+| `#b <n>` | Enregistre le réglage en NVS *(n'affecte plus le son d'alerte)* | `#b 0` |
+| `#code <ancien> <nouveau>` | Code d'activation persistant | `#code GAULIX GAULIX26` |
+| `#status` | État du pager en DM | `#status` |
 
-### Phase 1 — Pager secours *(en cours)*
+> **Whitelist stricte** : tout autre texte (ex. `test`) est ignoré par `GaulixPagerModule` (pas d'alerte, pas de buzzer).
+
+### Son, acquittement et sécurités
+
+| Événement | Son | Écran | ACK DM |
+|:----------|:----|:------|:-------|
+| `#alerte` / `#secours` / `#T1`…`#T4` | Pim-pom en boucle (1,5 s) | Plein page jusqu'à acquittement | Non |
+| Acquittement (trackball) | 1 bip fin | Retour accueil immédiat | `Pager ACK alerte JJ/MM HH:MM` (+ GPS Fr_Balise) |
+| `#fin` | 2 bips fin | Retour accueil | Non |
+| `#info` | 3× pim-pom puis silence | Inchangé | Non |
+| Batterie ≤ 10 % (hors USB) | 1 bip doux, rappel 5 min | Inchangé | Non |
+| 30 min sans acquittement | Arrêt silencieux | Retour accueil | Non |
+
+---
+
+## Fonctionnalités — état d'avancement
+
+Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md).
+
+### Phase 1 — Pager secours *(largement implémentée — v1.6)*
 
 | Fonction | Statut | Description |
 |:---------|:------:|:------------|
-| Écran Etat_bipper | ✅ | Accueil pager avec batterie et compteurs |
-| Canaux Gaulix par défaut | ✅ | ch0–3 + ch7 via userPrefs |
-| `#alerte <texte>` | ⏳ | Déclenchement alerte secours |
-| `#secours <texte>` | ⏳ | Synonyme alerte |
-| `#fin` | ⏳ | Fin d'alerte, retour normal |
-| Buzzer (3 bips / continu) | ⏳ | `#b <n>` pour régler le nombre |
-| Écran plein écran alerte | ⏳ | « ALERTE SECOURS » + texte + horodatage |
-| LEDs clignotantes | ⏳ | Séries de 3 impulsions |
-| Acquittement trackball / bouton | ⏳ | Arrêt alarme |
-| ACK automatique en DM | ⏳ | `Pager OK — alerte reçue à HH:MM` |
-| Code d'activation | ⏳ | `#code ANCIEN NOUVEAU` |
-| `#status` | ⏳ | État du pager à distance |
+| Écran d'accueil pager | ✅ | 4 lignes : nom, `Nb AL.` / `Der.`, version, batterie |
+| Historique alertes (20 entrées) | ✅ | `GaulixPagerAlertListModule`, scroll Haut/Bas |
+| Carrousel UI épuré | ✅ | Node, Bearings, LoRa, favoris masqués |
+| Alarme batterie 10 % | ✅ | Bip doux (45 % duty), rappel 5 min, muet si USB |
+| Canaux Gaulix + muet sauf Alerte | ✅ | ch0–3 + ch7 ; mute réappliqué au boot |
+| EU868 forcé au boot | ✅ | `NodeDB` + `GaulixPagerModule` |
+| `#alerte` / `#secours` | ✅ | Alerte tous Bippers, pim-pom continu |
+| `#T1`…`#T4` + `#tag` | ✅ | Alertes par service |
+| `#Info` / `#info` | ✅ | 3× pim-pom, pas d'écran alerte |
+| `#fin` | ✅ | Fin d'alerte à distance |
+| Son pim-pom continu | ✅ | Jusqu'à acquittement, `#fin` ou 30 min |
+| Écran plein page alerte | ✅ | ALERTE SECOURS + texte + horodatage |
+| LED clignotante | ✅ | PIN_LED1 pendant alerte |
+| Acquittement trackball | ✅ | ACK DM + bip fin |
+| ACK automatique + GPS | ✅ | `Pager ACK alerte JJ/MM HH:MM \| lat lon` |
+| Code d'activation `#code` | ✅ | Persistance `gaulixpager.cfg` |
+| `#status` | ✅ | État pager en DM |
+| Timeout 30 min | ✅ | Coupure auto sans acquittement |
+| Messages prédéfinis Gaulix | ✅ | 40 messages CannedMessage |
+| `#b <n>` | ⚠️ | Enregistré en NVS ; **ne pilote plus** le son d'alerte |
+| Code obligatoire dans `#alerte` | ⏳ | Non requis actuellement (whitelist syntaxe) |
 | Fiche réflexe opérateur | ⏳ | PDF 1 page |
 
-### Phase 2 — Niveaux d'alerte *(V1.5)*
+### Phase 2 — Niveaux d'alerte *(partiellement couvert en v1.6)*
 
-- `#info`, `#urgence` avec comportements sonores et visuels distincts
+- `#info` implémenté ; `#urgence` et niveaux visuels distincts : à venir
 - Messages prédéfinis (CannedMessage)
 - Liste blanche des coordinateurs
 - Journal local des 20 dernières alertes
@@ -415,32 +475,21 @@ Roadmap détaillée : [propositions-phases-bip-gaulix.md](propositions-phases-bi
 
 ---
 
-## Commandes prévues (référence)
-
-| Commande | Action | Exemple |
-|:---------|:-------|:--------|
-| `#alerte <texte>` | Déclenche une alerte secours | `#alerte Rassemblement hall sportif` |
-| `#secours <texte>` | Synonyme | `#secours Renforts secteur Nord` |
-| `#fin` | Fin d'alerte | `#fin` |
-| `#b <n>` | Nombre de bips (`0` = continu) | `#b 5` |
-| `#code <ancien> <nouveau>` | Change le code d'activation | `#code GAULIX GAULIX26` |
-| `#status` | État du pager | `#status` |
-
-> Ces commandes sont spécifiées dans le cahier des charges ; **aucune n'est encore traitée** par le firmware Bipper1.
-
----
-
 ## Tests et validation
 
-### Vérifications manuelles actuelles
+### Vérifications manuelles (v1.6)
 
 | Test | Résultat attendu |
 |:-----|:-----------------|
-| Build `seeed_wio_tracker_L1` | Compilation sans erreur, `firmware.uf2` généré |
-| Boot après flash UF2 | Nœud Meshtastic visible dans l'app |
-| Canaux (après factory reset) | `Fr_Balise` (primary), `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech`, `Alerte` |
-| Écran pager | Frame « PAGER Gaulix v1.0 » dans la rotation OLED |
-| Envoi `#alerte test` | **Aucun comportement spécial** (attendu tant que Phase 1 incomplète) |
+| Build `seeed_wio_tracker_L1` | Compilation OK, UF2 dans `C:\pio-build\` |
+| Boot | Écran accueil : nom, `Nb AL. : 0`, `Bipper Gaulix v1.6` |
+| Carrousel | Pas de pages Node, Bearings, LoRa, `*Node*` |
+| Batterie ≤ 10 % | 1 bip doux, rappel 5 min (silencieux si USB) |
+| `#info test` | 3× pim-pom, pas d'écran alerte |
+| `#alerte essai` | Pim-pom continu + écran ALERTE SECOURS bloqué |
+| Acquittement | Silence + ACK DM + position Fr_Balise |
+| `#fin` | Arrêt alerte + 2 bips fin, sans ACK |
+| Canaux | Seul **Alerte** non muet |
 
 ### Tests automatisés upstream
 
@@ -479,6 +528,8 @@ firmware_meshtastic/
 
 | Version | Date | Auteur | Notes |
 |:--------|:-----|:-------|:------|
+| 1.3 | 13/07/2026 | Réseau Gaulix | v1.6 : alarme batterie 10 %, historique alertes, carrousel épuré, `Nb AL.` / `Der.` |
+| 1.2 | 13/07/2026 | Réseau Gaulix | v1.4 : alertes, pim-pom, ACK GPS, écran 4 lignes, tags T1–T4 |
 | 1.1 | 06/07/2026 | Réseau Gaulix | Configuration usine complète (LoRa, canaux, rôle, BT, GPS) |
 | 1.0 | 06/07/2026 | Réseau Gaulix | Documentation initiale de l'état fork Bipper1 |
 

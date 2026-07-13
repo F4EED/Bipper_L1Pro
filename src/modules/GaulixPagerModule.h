@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.3"
+#define GAULIX_PAGER_VERSION "v1.6"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 
@@ -27,6 +27,22 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool isAlertActive() { return alertActive; }
     void userAcknowledgeAlert() { acknowledgeAlert(); }
 
+    struct AlertHistoryEntry {
+        uint32_t time = 0;
+        NodeNum from = 0;
+        bool viaDm = false;
+        bool isInfo = false;
+        bool acknowledged = false;
+        bool timedOut = false;
+        char text[64] = {};
+    };
+
+    static constexpr size_t ALERT_HISTORY_MAX = 20;
+    static size_t getAlertHistoryCount();
+    static bool getAlertHistoryEntry(size_t index, AlertHistoryEntry &out);
+    static size_t getAlertHistoryScrollIndex();
+    static void scrollAlertHistory(int delta);
+
   protected:
     virtual bool wantUIFrame() override { return true; }
     virtual bool interceptingKeyboardInput() override { return alertActive; }
@@ -39,8 +55,18 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
         CallbackObserver<GaulixPagerModule, const InputEvent *>(this, &GaulixPagerModule::handleInputEvent);
 
     static constexpr uint8_t DEFAULT_BEEP_COUNT = 3;
+    static constexpr uint8_t INFO_PIM_POM_COUNT = 3;
     static constexpr uint32_t LED_BLINK_MS = 300;
+    static constexpr uint32_t ALERT_MAX_DURATION_MS = 30UL * 60UL * 1000UL;
     static constexpr uint32_t CONTINUOUS_BEEP_INTERVAL_MS = GAULIX_CONTINUOUS_BEEP_INTERVAL_MS;
+    static constexpr uint32_t LOW_BATTERY_CHECK_MS = GAULIX_LOW_BATTERY_CHECK_MS;
+    static constexpr uint32_t LOW_BATTERY_REPEAT_MS = GAULIX_LOW_BATTERY_REPEAT_MS;
+    static constexpr uint8_t LOW_BATTERY_THRESHOLD_PCT = 10;
+
+    static uint32_t lastLowBatteryBeepMs;
+    static bool lowBatteryWarningActive;
+
+    static int32_t maintainBatteryWarning();
     static constexpr size_t ALERT_PACKET_DEDUP_SIZE = 32;
 
     struct SeenPacket {
@@ -61,10 +87,17 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool hasAlertSourcePacket;
     static char activationCode[32];
     static uint8_t configuredBeepCount;
+    static uint8_t configuredServiceTag; // 0=aucun, 1-4 = T1..T4
     static uint32_t alertStartedMs;
     static uint32_t lastContinuousBeepMs;
 
     static bool ledBlinkState;
+
+    static AlertHistoryEntry alertHistory[ALERT_HISTORY_MAX];
+    static size_t alertHistoryCount;
+    static size_t alertHistoryHead;
+    static size_t alertHistoryScrollIndex;
+    static size_t currentAlertHistoryPhysIdx;
 
     static const char *skipSpaces(const char *msg);
     static bool parseFinCommand(const char *msg);
@@ -72,6 +105,10 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool parseBeepCommand(const char *msg, uint8_t *outCount);
     static bool parseCodeCommand(const char *msg, char *oldCode, size_t oldLen, char *newCode, size_t newLen);
     static bool parseAlertWithText(const char *msg, const char *keyword, const char **outText);
+    static bool parseInfoCommand(const char *msg, const char **outText);
+    static bool parseTagSetCommand(const char *msg, uint8_t *outTag);
+    static bool parseServiceTagAlert(const char *msg, uint8_t *outTag, const char **outText);
+    static bool serviceTagMatches(uint8_t tag);
 
     static bool isAcceptedPacket(const meshtastic_MeshPacket &mp);
     static bool isPagerInternalReply(const char *msg);
@@ -80,6 +117,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool recentlySeenPacket(NodeNum from, uint32_t id);
     static void recordSeenPacket(NodeNum from, uint32_t id);
     static int findAlerteChannelIndex();
+    static int findBaliseChannelIndex();
     static bool activationCodeMatches(const char *code);
 
     void loadConfig();
@@ -91,6 +129,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     void clearAlert(bool playFinMelody);
     void sendReplyDm(const meshtastic_MeshPacket &rx, const char *text);
     void sendAckDm();
+    void sendAckPositionOnBalise();
     void sendStatusReply(const meshtastic_MeshPacket &mp);
     bool handleCodeCommand(const char *msg, const meshtastic_MeshPacket &mp);
     void showAlertScreen();
@@ -98,14 +137,19 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
 
     int handleInputEvent(const InputEvent *event);
 
-    static void playBeeps(uint8_t count);
+    static void playPimPoms(uint8_t count);
     static void playFinBeeps();
     static void ensureBuzzerReady();
     static int8_t alertLedPin();
 
     static void formatBatteryLine(char *buf, size_t len);
     static void formatLastAlertLine(char *buf, size_t len);
+    static void formatServiceTagLine(char *buf, size_t len);
+    static void formatStatusLine(char *buf, size_t len, OLEDDisplay *display);
     static void recordAlert();
+    static void addAlertHistoryEntry(const char *text, const meshtastic_MeshPacket &mp, bool isInfo = false);
+    static void markCurrentAlertHistoryAcknowledged();
+    static void markCurrentAlertHistoryTimedOut();
 };
 
 extern GaulixPagerModule *gaulixPagerModule;

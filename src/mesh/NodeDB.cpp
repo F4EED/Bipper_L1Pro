@@ -1909,7 +1909,7 @@ void NodeDB::installDefaultDeviceState()
 #ifdef USERPREFS_CONFIG_OWNER_LONG_NAME
     snprintf(owner.long_name, sizeof(owner.long_name), (const char *)USERPREFS_CONFIG_OWNER_LONG_NAME);
 #elif defined(GAULIX_PAGER)
-    snprintf(owner.long_name, sizeof(owner.long_name), "42BIP_LM8CMN-SDIS/%04x", getNodeNum() & 0xffff);
+    snprintf(owner.long_name, sizeof(owner.long_name), "%s", "Bipper de demo");
 #else
     snprintf(owner.long_name, sizeof(owner.long_name), "Meshtastic %04x", getNodeNum() & 0x0ffff);
 #endif

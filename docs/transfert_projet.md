@@ -38,10 +38,13 @@ Ce guide décrit comment reprendre le développement et le flashage des Bippers 
 
 | Fichier | Rôle |
 |:--------|:-----|
-| `src/modules/GaulixPagerModule.cpp` / `.h` | Module UI pager Gaulix |
+| `src/modules/GaulixPagerModule.cpp` / `.h` | Module UI pager Gaulix + alarme batterie 10 % |
+| `src/modules/GaulixPagerAlertListModule.cpp` / `.h` | Historique des 20 dernières alertes |
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Flag `-D GAULIX_PAGER=1` |
 | `platformio.ini` | `build_dir = C:/pio-build` (contournement chemins longs / verrous Windows) |
-| `userPrefs.jsonc` | Préconfiguration réseau Gaulix |
+| `src/buzz/buzz.cpp` | Sons Gaulix : pim-pom alerte + `playGaulixLowBatteryBeep()` |
+| `src/graphics/Screen.cpp` | Masquage pages Node / Bearings / LoRa / favoris (Gaulix) |
+| `userPrefs.jsonc` | Canaux Gaulix, EU868, nom `Bipper de demo` |
 
 ---
 
@@ -284,7 +287,18 @@ python -m platformio run -e seeed_wio_tracker_L1 -j 1 -t upload --upload-port CO
 1. Ouvrir l'application Meshtastic et associer le nœud.
 2. Si l'appareil avait une ancienne config : **factory reset** pour appliquer les canaux Gaulix de `userPrefs.jsonc`.
 3. Vérifier les canaux : `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech`, `Alerte`.
-4. Sur l'OLED : faire défiler jusqu'à l'écran **PAGER Gaulix v1.0**.
+4. Sur l'OLED : écran d'accueil **Bipper Gaulix v1.6** (nom, `Nb AL.` / `Der.`, batterie).
+
+### Parc matériel de test (juillet 2026)
+
+| Appareil | Port typique | S/N |
+|:---------|:-------------|:----|
+| Bipper 1 | COM20 | `681A8AEB0A2F672B` |
+| Bipper 2 | COM10 | `D08260225E657DB5` |
+
+```powershell
+pio run -e seeed_wio_tracker_L1 -t upload --upload-port COM20
+```
 
 ---
 
@@ -315,8 +329,8 @@ python -m platformio run -e seeed_wio_tracker_L1 -j 1
 ### Contenu attendu de `userPrefs.jsonc` (extrait)
 
 - Canaux : `Fr_Balise` (ch0), `Fr_EMCOM` (ch1), `Fr_BlaBla`, `Fr_Tech`, `Alerte` (ch7)
-- Région LoRa : `EU_868`
-- Fréquence : `869.4625` MHz
+- Région LoRa : `EU_868` (forcée à chaque boot en v1.6)
+- Nom usine : `Bipper de demo`
 - Rôle : `CLIENT_MUTE`
 
 ---
@@ -326,7 +340,7 @@ python -m platformio run -e seeed_wio_tracker_L1 -j 1
 | Scénario | Durée indicative (32 Go RAM, NVMe) |
 |:---------|:-------------------------------------|
 | Premier build complet (`seeed_wio_tracker_L1`) | 15 – 25 min |
-| Build incrémental (petite modification) | 2 – 8 min |
+| Build incrémental (petite modification) | **1 – 2 min** |
 | Changement de lib / clean build | 15 – 20 min |
 | Variante e-ink (premier build) | 15 – 25 min |
 
@@ -426,4 +440,15 @@ Copy-Item C:\pio-build\seeed_wio_tracker_L1\firmware.uf2 D:\
 
 ---
 
-*Dernière mise à jour : juillet 2026 — fork Gaulix Bipper L1 Pro (branche `develop`).*
+*Dernière mise à jour : 13/07/2026 — Gaulix Bipper **v1.6** (branche `develop`).*
+
+### Nouveautés v1.6
+
+| Fonction | Détail |
+|:---------|:-------|
+| Alarme batterie 10 % | Bip doux (duty 45 %, 120 ms), rappel toutes les 5 min, muet si USB/charge |
+| Écran accueil | Libellés `Nb AL. :` et `Der. :` (ligne 2) |
+| Carrousel masqué | Pages Node, Bearings, LoRa, favoris `*Node*` |
+| Historique alertes | `GaulixPagerAlertListModule` — 20 entrées, scroll Haut/Bas |
+| ACK acquittement | DM + broadcast position sur canal **Fr_Balise** |
+| Version module | `GAULIX_PAGER_VERSION` = `v1.6` |

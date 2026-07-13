@@ -416,12 +416,12 @@ static bool gaulixPlayToneDuty(uint8_t pin, unsigned int frequency, unsigned lon
 }
 #endif // ARCH_NRF52
 
-static void gaulixPlayOneBeep(uint8_t pin, unsigned long durationMs)
+static void gaulixPlayOneBeep(uint8_t pin, unsigned int frequencyHz, unsigned long durationMs)
 {
 #if defined(ARCH_NRF52)
-    gaulixPlayToneDuty(pin, GAULIX_BUZZER_FREQ_HZ, durationMs, GAULIX_BUZZER_DUTY);
+    gaulixPlayToneDuty(pin, frequencyHz, durationMs, GAULIX_BUZZER_DUTY);
 #else
-    tone(pin, GAULIX_BUZZER_FREQ_HZ, durationMs);
+    tone(pin, frequencyHz, durationMs);
     if (durationMs > 0) {
         delay(static_cast<uint32_t>(durationMs * 1.3f));
     }
@@ -439,9 +439,25 @@ void playGaulixPagerBeep()
         return;
     }
 
-    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS);
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_FREQ_HZ, GAULIX_BUZZER_DURATION_MS);
     delay(GAULIX_BUZZER_PULSE_GAP_MS);
-    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS);
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_FREQ_HZ, GAULIX_BUZZER_DURATION_MS);
+}
+
+void playGaulixPagerPimPom()
+{
+    if (!gaulixCanBuzz()) {
+        return;
+    }
+
+    const uint8_t pin = gaulixBuzzerPin();
+    if (!pin) {
+        return;
+    }
+
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_HIGH_FREQ_HZ, GAULIX_BUZZER_DURATION_MS);
+    delay(GAULIX_BUZZER_PULSE_GAP_MS);
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_LOW_FREQ_HZ, GAULIX_BUZZER_DURATION_MS);
 }
 
 void playGaulixPagerFinBeep()
@@ -455,7 +471,28 @@ void playGaulixPagerFinBeep()
         return;
     }
 
-    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS / 2);
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_LOW_FREQ_HZ, GAULIX_BUZZER_DURATION_MS / 2);
+}
+
+void playGaulixLowBatteryBeep()
+{
+    if (!gaulixCanBuzz()) {
+        return;
+    }
+
+    const uint8_t pin = gaulixBuzzerPin();
+    if (!pin) {
+        return;
+    }
+
+#if defined(ARCH_NRF52)
+    gaulixPlayToneDuty(pin, GAULIX_LOW_BATTERY_FREQ_HZ, GAULIX_LOW_BATTERY_DURATION_MS, GAULIX_LOW_BATTERY_DUTY);
+#else
+    tone(pin, GAULIX_LOW_BATTERY_FREQ_HZ, GAULIX_LOW_BATTERY_DURATION_MS);
+    if (GAULIX_LOW_BATTERY_DURATION_MS > 0) {
+        delay(static_cast<uint32_t>(GAULIX_LOW_BATTERY_DURATION_MS * 1.3f));
+    }
+#endif
 }
 
 #endif // GAULIX_PAGER

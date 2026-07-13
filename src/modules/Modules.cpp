@@ -98,6 +98,7 @@
 #endif
 #if defined(GAULIX_PAGER) && HAS_SCREEN
 #include "modules/GaulixPagerModule.h"
+#include "modules/GaulixPagerAlertListModule.h"
 #endif
 #if !MESHTASTIC_EXCLUDE_RANGETEST && !MESHTASTIC_EXCLUDE_GPS
 #include "modules/RangeTestModule.h"
@@ -161,6 +162,7 @@ void setupModules()
 #endif
 #if defined(GAULIX_PAGER) && HAS_SCREEN
     gaulixPagerModule = new GaulixPagerModule();
+    gaulixPagerAlertListModule = new GaulixPagerAlertListModule();
 #endif
 #if !MESHTASTIC_EXCLUDE_TEXTMESSAGE
     textMessageModule = new TextMessageModule();
