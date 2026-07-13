@@ -152,6 +152,11 @@ static const uint8_t SCL = PIN_WIRE_SCL;
 
 #define PIN_BUZZER D12 // P1.00, pwm output
 
+// Gaulix alert buzzer: 75 % PWM duty, 2.7 kHz resonance, 180 ms double-pulse.
+#ifndef GAULIX_BUZZER_DUTY
+#define GAULIX_BUZZER_DUTY 75
+#endif
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  joystick
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

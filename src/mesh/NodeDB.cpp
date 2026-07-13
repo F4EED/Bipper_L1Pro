@@ -1135,8 +1135,13 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
 #endif
 
 #if defined(GAULIX_PAGER)
-    // Keep UI static by default on Gaulix pager builds.
+    // Gaulix pager factory defaults: static UI and EU 868 MHz LoRa region.
     config.display.auto_screen_carousel_secs = 0;
+    config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
+#if defined(PIN_BUZZER)
+    config.device.buzzer_gpio = PIN_BUZZER;
+#endif
 #endif
 
 #if defined(ARCH_ESP32) && !MESHTASTIC_EXCLUDE_WIFI
@@ -1262,6 +1267,13 @@ void NodeDB::installDefaultModuleConfig()
     moduleConfig.external_notification.output_ms = 100;
     moduleConfig.external_notification.active = true;
 #endif // NANO_G2_ULTRA
+
+#if defined(GAULIX_PAGER)
+    // GaulixPagerModule owns message alerts; ExternalNotification must stay quiet.
+    moduleConfig.external_notification.alert_message = false;
+    moduleConfig.external_notification.alert_message_buzzer = false;
+    moduleConfig.external_notification.alert_message_vibra = false;
+#endif
 
 #ifdef T_LORA_PAGER
     moduleConfig.canned_message.updown1_enabled = true;
@@ -2375,6 +2387,18 @@ void NodeDB::loadFromDisk()
     // Skip on a degraded boot to keep the radio silent (identity is already protected by the keygen gate).
     if (!configDecodeFailed)
         config.lora.region = USERPREFS_CONFIG_LORA_REGION;
+#endif
+
+#if defined(GAULIX_PAGER)
+    // Re-apply on every boot so stale NVS cannot leave the pager on the wrong band.
+    if (!configDecodeFailed)
+        config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    if (!configDecodeFailed) {
+        config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
+#if defined(PIN_BUZZER)
+        config.device.buzzer_gpio = PIN_BUZZER;
+#endif
+    }
 #endif
 
 #ifdef USERPREFS_LORACONFIG_USE_PRESET

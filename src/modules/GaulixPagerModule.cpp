@@ -15,6 +15,7 @@
 #include "graphics/ScreenFonts.h"
 #include "main.h"
 #include "mesh/Throttle.h"
+#include <NonBlockingRtttl.h>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -30,11 +31,15 @@ bool GaulixPagerModule::alertActive = false;
 char GaulixPagerModule::alertText[96] = {};
 NodeNum GaulixPagerModule::alertSourceNode = 0;
 uint8_t GaulixPagerModule::alertSourceChannel = 0;
+meshtastic_MeshPacket GaulixPagerModule::alertSourcePacket = meshtastic_MeshPacket_init_zero;
+bool GaulixPagerModule::hasAlertSourcePacket = false;
 char GaulixPagerModule::activationCode[32] = GAULIX_DEFAULT_ACTIVATION_CODE;
 uint8_t GaulixPagerModule::configuredBeepCount = GaulixPagerModule::DEFAULT_BEEP_COUNT;
 uint32_t GaulixPagerModule::alertStartedMs = 0;
 uint32_t GaulixPagerModule::lastContinuousBeepMs = 0;
 bool GaulixPagerModule::ledBlinkState = false;
+GaulixPagerModule::SeenPacket GaulixPagerModule::seenPackets[GaulixPagerModule::ALERT_PACKET_DEDUP_SIZE] = {};
+size_t GaulixPagerModule::seenPacketIndex = 0;
 
 GaulixPagerModule::GaulixPagerModule()
     : SinglePortModule("gaulixpager", meshtastic_PortNum_TEXT_MESSAGE_APP), concurrency::OSThread("GaulixPager")
@@ -43,14 +48,21 @@ GaulixPagerModule::GaulixPagerModule()
     requestFocus();
     // Force pager alerting defaults on each boot so stale persisted settings
     // don't make two flashed devices behave differently.
-    config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
+    ensureBuzzerReady();
     moduleConfig.has_external_notification = true;
     moduleConfig.external_notification.enabled = true;
-    moduleConfig.external_notification.alert_message_buzzer = true;
+    // GaulixPagerModule owns message alerts; avoid duplicate buzzer from ExternalNotificationModule.
+    moduleConfig.external_notification.alert_message = false;
+    moduleConfig.external_notification.alert_message_buzzer = false;
+    moduleConfig.external_notification.alert_message_vibra = false;
 #if defined(PIN_BUZZER)
     moduleConfig.external_notification.output_buzzer = PIN_BUZZER;
     moduleConfig.external_notification.use_pwm = true;
 #endif
+    applyChannelMuteDefaults();
+    // Force EU 868 MHz on every boot; stale persisted region breaks Gaulix mesh interoperability.
+    config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.lora.tx_enabled = true;
     loadConfig();
 #if !defined(MESHTASTIC_EXCLUDE_INPUTBROKER)
     if (inputBroker) {
@@ -101,6 +113,21 @@ bool GaulixPagerModule::saveConfig()
 #endif
 }
 
+void GaulixPagerModule::applyChannelMuteDefaults()
+{
+    const int alerteCh = findAlerteChannelIndex();
+    for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
+        meshtastic_Channel &ch = channels.getByIndex(i);
+        if (!ch.has_settings || !ch.settings.name[0]) {
+            continue;
+        }
+        if (!ch.settings.has_module_settings) {
+            ch.settings.has_module_settings = true;
+        }
+        ch.settings.module_settings.is_muted = (static_cast<int>(i) != alerteCh);
+    }
+}
+
 void GaulixPagerModule::recordAlert()
 {
     alertCount++;
@@ -134,6 +161,45 @@ bool GaulixPagerModule::isAcceptedPacket(const meshtastic_MeshPacket &mp)
     }
 
     return false;
+}
+
+bool GaulixPagerModule::isPagerInternalReply(const char *msg)
+{
+    msg = skipSpaces(msg);
+    if (!msg) {
+        return false;
+    }
+    // ACK receipts must reach the message UI / phone app on the alert originator.
+    if (strncmp(msg, "Pager ACK", 9) == 0) {
+        return false;
+    }
+    return strncmp(msg, "Pager OK", 8) == 0 || strncmp(msg, "Pager ERR", 9) == 0 ||
+           strncmp(msg, "Pager Gaulix", 12) == 0;
+}
+
+bool GaulixPagerModule::recentlySeenPacket(NodeNum from, uint32_t id)
+{
+    if (id == 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < ALERT_PACKET_DEDUP_SIZE; i++) {
+        if (seenPackets[i].id == id && seenPackets[i].from == from) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GaulixPagerModule::recordSeenPacket(NodeNum from, uint32_t id)
+{
+    if (id == 0) {
+        return;
+    }
+
+    seenPackets[seenPacketIndex].from = from;
+    seenPackets[seenPacketIndex].id = id;
+    seenPacketIndex = (seenPacketIndex + 1) % ALERT_PACKET_DEDUP_SIZE;
 }
 
 const char *GaulixPagerModule::skipSpaces(const char *msg)
@@ -220,11 +286,10 @@ bool GaulixPagerModule::parseCodeCommand(const char *msg, char *oldCode, size_t 
     return newIdx > 0;
 }
 
-bool GaulixPagerModule::parseAlertCommand(const char *msg, const char *keyword, char *code, size_t codeLen,
-                                          const char **outText)
+bool GaulixPagerModule::parseAlertWithText(const char *msg, const char *keyword, const char **outText)
 {
     msg = skipSpaces(msg);
-    if (!msg || !keyword) {
+    if (!msg || !keyword || !outText) {
         return false;
     }
 
@@ -234,23 +299,12 @@ bool GaulixPagerModule::parseAlertCommand(const char *msg, const char *keyword, 
         return false;
     }
 
-    const char *arg = skipSpaces(msg + keywordLen);
-    if (!arg || !arg[0]) {
+    const char *text = skipSpaces(msg + keywordLen);
+    if (!text || !text[0]) {
         return false;
     }
 
-    size_t codeIdx = 0;
-    while (arg[codeIdx] && !std::isspace(static_cast<unsigned char>(arg[codeIdx])) && codeIdx < codeLen - 1) {
-        code[codeIdx] = arg[codeIdx];
-        codeIdx++;
-    }
-    code[codeIdx] = '\0';
-    if (codeIdx == 0) {
-        return false;
-    }
-
-    arg = skipSpaces(arg + codeIdx);
-    *outText = arg ? arg : "";
+    *outText = text;
     return true;
 }
 
@@ -259,17 +313,56 @@ bool GaulixPagerModule::activationCodeMatches(const char *code)
     return code && code[0] && strcmp(code, activationCode) == 0;
 }
 
+void GaulixPagerModule::ensureBuzzerReady()
+{
+    config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
+#if defined(PIN_BUZZER)
+    if (!config.device.buzzer_gpio) {
+        config.device.buzzer_gpio = PIN_BUZZER;
+    }
+#endif
+}
+
+void GaulixPagerModule::prepareBuzzerForAlert()
+{
+    rtttl::stop();
+#if defined(PIN_BUZZER)
+    if (config.device.buzzer_gpio) {
+        noTone(config.device.buzzer_gpio);
+    }
+#endif
+    ensureBuzzerReady();
+}
+
+void GaulixPagerModule::scheduleAlertMaintenance()
+{
+    setIntervalFromNow(LED_BLINK_MS);
+    runASAP = true;
+}
+
+int8_t GaulixPagerModule::alertLedPin()
+{
+#if defined(PIN_LED1) && (!defined(PIN_BUZZER) || (PIN_LED1) != (PIN_BUZZER))
+    return PIN_LED1;
+#elif defined(PIN_LED2) && (!defined(PIN_BUZZER) || (PIN_LED2) != (PIN_BUZZER))
+    return PIN_LED2;
+#else
+    return -1;
+#endif
+}
+
 void GaulixPagerModule::playBeeps(uint8_t count)
 {
     for (uint8_t i = 0; i < count; i++) {
-        playBeep();
+        playGaulixPagerBeep();
     }
 }
 
 void GaulixPagerModule::playFinBeeps()
 {
-    playBeep();
-    playBeep();
+    playGaulixPagerFinBeep();
+    delay(GAULIX_BUZZER_PULSE_GAP_MS);
+    playGaulixPagerFinBeep();
 }
 
 void GaulixPagerModule::drawAlertFrame(OLEDDisplay *display, OLEDDisplayUiState *state, int16_t x, int16_t y)
@@ -280,7 +373,7 @@ void GaulixPagerModule::drawAlertFrame(OLEDDisplay *display, OLEDDisplayUiState 
 
     display->setTextAlignment(TEXT_ALIGN_CENTER);
     display->setFont(FONT_MEDIUM);
-    display->drawString(centerX, y + 2, "ALERTE SECOURS");
+    display->drawString(centerX, y + 2, "ALERTE");
 
     display->setFont(FONT_SMALL);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -322,6 +415,8 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
 
     alertSourceNode = mp.from;
     alertSourceChannel = mp.channel;
+    alertSourcePacket = mp;
+    hasAlertSourcePacket = true;
 
     recordAlert();
     alertActive = true;
@@ -329,8 +424,11 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     alertStartedMs = millis();
     lastContinuousBeepMs = alertStartedMs;
 
-    LOG_INFO("GaulixPager: alerte '%s' de 0x%08x", alertText, alertSourceNode);
+    const char *via = isBroadcast(mp.to) ? "broadcast canal Alerte" : "DM bipper";
+    LOG_INFO("GaulixPager: alerte '%s' via %s de 0x%08x ch %u bips=%u", alertText, via, alertSourceNode, alertSourceChannel,
+             configuredBeepCount);
 
+    prepareBuzzerForAlert();
     if (configuredBeepCount == 0) {
         playBeep();
     } else {
@@ -338,17 +436,19 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     }
     showAlertScreen();
 
-#if defined(PIN_LED2)
-    pinMode(PIN_LED2, OUTPUT);
-    digitalWrite(PIN_LED2, HIGH);
-#endif
+    const int8_t ledPin = alertLedPin();
+    if (ledPin >= 0) {
+        pinMode(ledPin, OUTPUT);
+        digitalWrite(ledPin, HIGH);
+    }
 
-    setIntervalFromNow(LED_BLINK_MS);
+    scheduleAlertMaintenance();
 }
 
 void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char *text)
 {
     if (!text || !rx.from || rx.from == NODENUM_BROADCAST) {
+        LOG_WARN("GaulixPager: pas de destinataire pour reponse DM");
         return;
     }
 
@@ -357,17 +457,27 @@ void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char 
     p->channel = rx.channel;
     p->want_ack = false;
     p->decoded.want_response = false;
+    p->decoded.dest = rx.from;
+
+    meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(rx.from);
+    const NodeNum myNodeNum = nodeDB->getNodeNum();
+    if (node && node->num != myNodeNum && nodeInfoLiteHasUser(node) && node->public_key.size == 32) {
+        p->pki_encrypted = true;
+        p->channel = 0;
+    }
 
     const size_t len = strnlen(text, sizeof(p->decoded.payload.bytes));
     p->decoded.payload.size = len;
     memcpy(p->decoded.payload.bytes, text, len);
 
-    service->sendToMesh(p);
+    service->sendToMesh(p, RX_SRC_LOCAL, true);
+    LOG_INFO("GaulixPager: DM vers 0x%08x ch %u", rx.from, p->channel);
 }
 
 void GaulixPagerModule::sendAckDm()
 {
     if (!alertSourceNode || alertSourceNode == NODENUM_BROADCAST) {
+        LOG_WARN("GaulixPager: ACK ignore — source 0x%08x", alertSourceNode);
         return;
     }
 
@@ -379,13 +489,17 @@ void GaulixPagerModule::sendAckDm()
     }
 
     char reply[64];
-    snprintf(reply, sizeof(reply), "Pager OK — alerte reçue à %s", timeBuf);
+    snprintf(reply, sizeof(reply), "Pager ACK alerte %s", timeBuf);
 
-    meshtastic_MeshPacket ackTarget = meshtastic_MeshPacket_init_zero;
-    ackTarget.from = alertSourceNode;
-    ackTarget.channel = alertSourceChannel;
-    sendReplyDm(ackTarget, reply);
-    LOG_INFO("GaulixPager: ACK vers 0x%08x", alertSourceNode);
+    if (hasAlertSourcePacket) {
+        sendReplyDm(alertSourcePacket, reply);
+    } else {
+        meshtastic_MeshPacket ackTarget = meshtastic_MeshPacket_init_zero;
+        ackTarget.from = alertSourceNode;
+        ackTarget.channel = alertSourceChannel;
+        sendReplyDm(ackTarget, reply);
+    }
+    LOG_INFO("GaulixPager: ACK vers 0x%08x ch %u", alertSourceNode, alertSourceChannel);
 }
 
 void GaulixPagerModule::sendStatusReply(const meshtastic_MeshPacket &mp)
@@ -438,7 +552,7 @@ void GaulixPagerModule::acknowledgeAlert()
 
     sendAckDm();
     clearAlert(false);
-    playBoop();
+    playGaulixPagerFinBeep();
 }
 
 void GaulixPagerModule::clearAlert(bool playFinMelody)
@@ -452,13 +566,15 @@ void GaulixPagerModule::clearAlert(bool playFinMelody)
     alertActive = false;
     alertSourceNode = 0;
     alertSourceChannel = 0;
+    hasAlertSourcePacket = false;
     alertStartedMs = 0;
     lastContinuousBeepMs = 0;
     ledBlinkState = false;
 
-#if defined(PIN_LED2)
-    digitalWrite(PIN_LED2, LOW);
-#endif
+    const int8_t ledPin = alertLedPin();
+    if (ledPin >= 0) {
+        digitalWrite(ledPin, LOW);
+    }
 
     if (screen) {
         screen->endAlert();
@@ -475,6 +591,12 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::CONTINUE;
     }
 
+    const NodeNum sender = getFrom(&mp);
+    if (recentlySeenPacket(sender, mp.id)) {
+        return ProcessMessage::CONTINUE;
+    }
+    recordSeenPacket(sender, mp.id);
+
     char buf[260];
     memset(buf, 0, sizeof(buf));
     size_t n = mp.decoded.payload.size;
@@ -483,14 +605,18 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
     }
     memcpy(buf, mp.decoded.payload.bytes, n);
 
+    if (isPagerInternalReply(buf)) {
+        return ProcessMessage::STOP;
+    }
+
     if (parseFinCommand(buf)) {
         clearAlert(true);
-        return ProcessMessage::CONTINUE;
+        return ProcessMessage::STOP;
     }
 
     if (parseStatusCommand(buf)) {
         sendStatusReply(mp);
-        return ProcessMessage::CONTINUE;
+        return ProcessMessage::STOP;
     }
 
     uint8_t beepCount = 0;
@@ -504,24 +630,19 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
             snprintf(reply, sizeof(reply), "Pager OK — bips: %u", beepCount);
         }
         sendReplyDm(mp, reply);
-        return ProcessMessage::CONTINUE;
+        return ProcessMessage::STOP;
     }
 
     if (handleCodeCommand(buf, mp)) {
-        return ProcessMessage::CONTINUE;
+        return ProcessMessage::STOP;
     }
 
-    char code[32];
-    const char *text = nullptr;
-    const bool isAlerte = parseAlertCommand(buf, "#alerte", code, sizeof(code), &text);
-    const bool isSecours = !isAlerte && parseAlertCommand(buf, "#secours", code, sizeof(code), &text);
+    const char *alertTextArg = nullptr;
+    const bool isAlerte = parseAlertWithText(buf, "#alerte", &alertTextArg);
+    const bool isSecours = !isAlerte && parseAlertWithText(buf, "#secours", &alertTextArg);
     if (isAlerte || isSecours) {
-        if (!activationCodeMatches(code)) {
-            LOG_WARN("GaulixPager: code d'activation invalide");
-            sendReplyDm(mp, "Pager ERR — code invalide");
-            return ProcessMessage::CONTINUE;
-        }
-        triggerAlert(text, mp);
+        triggerAlert(alertTextArg, mp);
+        return ProcessMessage::STOP;
     }
 
     return ProcessMessage::CONTINUE;
@@ -543,29 +664,26 @@ int GaulixPagerModule::handleInputEvent(const InputEvent *event)
 
 int32_t GaulixPagerModule::runOnce()
 {
-    if (!alertActive) {
-#if defined(PIN_LED2)
-        digitalWrite(PIN_LED2, LOW);
-#endif
-        return INT32_MAX;
-    }
+    const int8_t ledPin = alertLedPin();
 
-    if ((uint32_t)(millis() - alertStartedMs) >= ALERT_TIMEOUT_MS) {
-        LOG_INFO("GaulixPager: coupure auto apres 30 min");
-        clearAlert(false);
+    if (!alertActive) {
+        if (ledPin >= 0) {
+            digitalWrite(ledPin, LOW);
+        }
         return INT32_MAX;
     }
 
     if (configuredBeepCount == 0 &&
         !Throttle::isWithinTimespanMs(lastContinuousBeepMs, CONTINUOUS_BEEP_INTERVAL_MS)) {
         lastContinuousBeepMs = millis();
-        playBeep();
+        prepareBuzzerForAlert();
+        playGaulixPagerBeep();
     }
 
-#if defined(PIN_LED2)
-    ledBlinkState = !ledBlinkState;
-    digitalWrite(PIN_LED2, ledBlinkState ? HIGH : LOW);
-#endif
+    if (ledPin >= 0) {
+        ledBlinkState = !ledBlinkState;
+        digitalWrite(ledPin, ledBlinkState ? HIGH : LOW);
+    }
 
     return LED_BLINK_MS;
 }
@@ -633,18 +751,13 @@ void GaulixPagerModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *stat
 
     display->setFont(FONT_SMALL);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
-    const int16_t statusX = x + 4;
-    display->fillCircle(statusX + 3, lineY + FONT_HEIGHT_SMALL / 2, 3);
-    display->drawString(statusX + 10, lineY, alertActive ? "En alerte" : "En écoute");
-    lineY += FONT_HEIGHT_SMALL + 1;
-
     char lineBuf[32];
     snprintf(lineBuf, sizeof(lineBuf), "Alerte(s) : %lu", static_cast<unsigned long>(alertCount));
     display->drawString(x + 2, lineY, lineBuf);
+    lineY += FONT_HEIGHT_SMALL + 1;
 
     formatLastAlertLine(lineBuf, sizeof(lineBuf));
-    display->setTextAlignment(TEXT_ALIGN_RIGHT);
-    display->drawString(x + display->getWidth() - 2, lineY, lineBuf);
+    display->drawString(x + 2, lineY, lineBuf);
     lineY += FONT_HEIGHT_SMALL + 1;
 
     formatBatteryLine(lineBuf, sizeof(lineBuf));

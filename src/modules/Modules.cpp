@@ -159,6 +159,9 @@ void setupModules()
 #if !MESHTASTIC_EXCLUDE_WAYPOINT
     waypointModule = new WaypointModule();
 #endif
+#if defined(GAULIX_PAGER) && HAS_SCREEN
+    gaulixPagerModule = new GaulixPagerModule();
+#endif
 #if !MESHTASTIC_EXCLUDE_TEXTMESSAGE
     textMessageModule = new TextMessageModule();
 #endif
@@ -268,9 +271,6 @@ void setupModules()
 #endif
 #if !MESHTASTIC_EXCLUDE_EXTERNALNOTIFICATION
     externalNotificationModule = new ExternalNotificationModule();
-#endif
-#if defined(GAULIX_PAGER) && HAS_SCREEN
-    gaulixPagerModule = new GaulixPagerModule();
 #endif
 #if !MESHTASTIC_EXCLUDE_RANGETEST && !MESHTASTIC_EXCLUDE_GPS
     if (moduleConfig.has_range_test && moduleConfig.range_test.enabled)

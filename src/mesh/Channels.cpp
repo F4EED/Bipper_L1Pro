@@ -261,6 +261,15 @@ void Channels::initDefaultChannel(ChannelIndex chIndex)
     default:
         break;
     }
+
+#if defined(GAULIX_PAGER)
+    // Factory default: only the Alerte channel notifies; all other named channels are muted.
+    if (channelSettings.name[0] && strcmp(channelSettings.name, "Alerte") == 0) {
+        channelSettings.module_settings.is_muted = false;
+    } else if (channelSettings.name[0]) {
+        channelSettings.module_settings.is_muted = true;
+    }
+#endif
 }
 
 CryptoKey Channels::getKey(ChannelIndex chIndex)

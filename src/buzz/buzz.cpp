@@ -266,3 +266,196 @@ void play4ClickUp()
     ToneDuration melody[] = {{NOTE_F5, 50}, {NOTE_G6, 45}, {NOTE_E7, 60}};
     playTones(melody, sizeof(melody) / sizeof(ToneDuration));
 }
+
+#if defined(GAULIX_PAGER)
+
+static bool gaulixCanBuzz()
+{
+    return config.device.buzzer_mode != meshtastic_Config_DeviceConfig_BuzzerMode_DISABLED &&
+           config.device.buzzer_mode != meshtastic_Config_DeviceConfig_BuzzerMode_NOTIFICATIONS_ONLY;
+}
+
+static uint8_t gaulixBuzzerPin()
+{
+#if defined(PIN_BUZZER)
+    if (!config.device.buzzer_gpio) {
+        config.device.buzzer_gpio = PIN_BUZZER;
+    }
+#endif
+    return static_cast<uint8_t>(config.device.buzzer_gpio);
+}
+
+#if defined(ARCH_NRF52)
+#include "HardwarePWM.h"
+#include "WVariant.h"
+
+enum { GAULIX_TONE_TOKEN = 0x4761756c }; // 'Gaul'
+
+static NRF_PWM_Type *const gaulixPwm = NRF_PWM2;
+static HardwarePWM *const gaulixHwPwm = HwPWMx[2];
+
+static uint64_t gaulixPulseCount(unsigned int frequency, unsigned long durationMs)
+{
+    if (durationMs == 0) {
+        return 0;
+    }
+    if (durationMs < 1000ULL && durationMs * frequency < 1000ULL) {
+        return 1ULL;
+    }
+    if (UINT64_MAX / frequency < durationMs) {
+        return (durationMs / 1000ULL) * frequency;
+    }
+    return (static_cast<uint64_t>(durationMs) * frequency) / 1000ULL;
+}
+
+static bool gaulixPlayToneDuty(uint8_t pin, unsigned int frequency, unsigned long durationMs, uint8_t dutyPercent)
+{
+    if (pin >= PINS_COUNT || frequency < 20 || frequency > 25000) {
+        return false;
+    }
+
+    uint8_t duty = dutyPercent;
+    if (duty < 1) {
+        duty = 1;
+    } else if (duty > 80) {
+        duty = 80;
+    }
+
+    noTone(pin);
+
+    if (!gaulixHwPwm->isOwner(GAULIX_TONE_TOKEN) && !gaulixHwPwm->takeOwnership(GAULIX_TONE_TOKEN)) {
+        tone(pin, frequency, durationMs);
+        if (durationMs > 0) {
+            delay(static_cast<uint32_t>(durationMs * 1.3f));
+        }
+        return true;
+    }
+
+    const uint64_t pulseCount = gaulixPulseCount(frequency, durationMs);
+    const uint16_t timePeriod = static_cast<uint16_t>(125000U / frequency);
+    uint16_t dutyWithPolarity = static_cast<uint16_t>(0x8000U | ((timePeriod * duty) / 100U));
+
+    uint32_t seq0Refresh = 0;
+    uint32_t seq1Refresh = 0;
+    uint16_t loopCount = 1;
+    nrf_pwm_task_t taskToStart = NRF_PWM_TASK_SEQSTART1;
+    nrf_pwm_short_mask_t shorts = NRF_PWM_SHORT_LOOPSDONE_STOP_MASK;
+
+    if (pulseCount == 0) {
+        seq0Refresh = 0xFFFFFFU;
+        seq1Refresh = 0xFFFFFFU;
+        loopCount = 0xFFFFU;
+        taskToStart = NRF_PWM_TASK_SEQSTART0;
+        shorts = NRF_PWM_SHORT_LOOPSDONE_SEQSTART0_MASK;
+    } else if (pulseCount == 1) {
+        seq0Refresh = 0;
+        seq1Refresh = 0;
+        loopCount = 1;
+        taskToStart = NRF_PWM_TASK_SEQSTART1;
+    } else {
+        unsigned int bitsNeeded = 0;
+        for (uint64_t v = pulseCount; v; v >>= 1) {
+            bitsNeeded++;
+        }
+        const unsigned int bitsForRefresh = bitsNeeded * 2 / 3;
+        const uint32_t totalRefreshCount = 1U << bitsForRefresh;
+        const uint32_t fullLoops = static_cast<uint32_t>((pulseCount - 1) / totalRefreshCount);
+        const uint32_t extraPulses = static_cast<uint32_t>((pulseCount - 1) % totalRefreshCount);
+        uint32_t seq0Count;
+
+        if (extraPulses == 0) {
+            seq0Count = totalRefreshCount / 2;
+            taskToStart = NRF_PWM_TASK_SEQSTART1;
+        } else {
+            seq0Count = extraPulses;
+            taskToStart = NRF_PWM_TASK_SEQSTART0;
+        }
+        loopCount = static_cast<uint16_t>(fullLoops + 1);
+        seq0Refresh = seq0Count - 1;
+        seq1Refresh = (totalRefreshCount - seq0Count) - 1;
+    }
+
+    if (gaulixPwm->ENABLE & PWM_ENABLE_ENABLE_Msk) {
+        nrf_pwm_task_trigger(gaulixPwm, NRF_PWM_TASK_STOP);
+        nrf_pwm_disable(gaulixPwm);
+        gaulixPwm->PSEL.OUT[0] = NRF_PWM_PIN_NOT_CONNECTED;
+    }
+
+    uint32_t pins[NRF_PWM_CHANNEL_COUNT] = {g_ADigitalPinMap[pin], NRF_PWM_PIN_NOT_CONNECTED, NRF_PWM_PIN_NOT_CONNECTED,
+                                                  NRF_PWM_PIN_NOT_CONNECTED};
+
+    nrf_pwm_pins_set(gaulixPwm, pins);
+    nrf_pwm_enable(gaulixPwm);
+    nrf_pwm_configure(gaulixPwm, NRF_PWM_CLK_125kHz, NRF_PWM_MODE_UP, timePeriod);
+    nrf_pwm_decoder_set(gaulixPwm, NRF_PWM_LOAD_COMMON, NRF_PWM_STEP_AUTO);
+    nrf_pwm_shorts_set(gaulixPwm, shorts);
+    nrf_pwm_int_set(gaulixPwm, 0);
+    nrf_pwm_seq_ptr_set(gaulixPwm, 0, &dutyWithPolarity);
+    nrf_pwm_seq_ptr_set(gaulixPwm, 1, &dutyWithPolarity);
+    nrf_pwm_seq_cnt_set(gaulixPwm, 0, 1);
+    nrf_pwm_seq_cnt_set(gaulixPwm, 1, 1);
+    nrf_pwm_seq_refresh_set(gaulixPwm, 0, seq0Refresh);
+    nrf_pwm_seq_refresh_set(gaulixPwm, 1, seq1Refresh);
+    nrf_pwm_seq_end_delay_set(gaulixPwm, 0, 0);
+    nrf_pwm_seq_end_delay_set(gaulixPwm, 1, 0);
+    nrf_pwm_loop_set(gaulixPwm, loopCount);
+    nrf_pwm_event_clear(gaulixPwm, NRF_PWM_EVENT_STOPPED);
+    nrf_pwm_task_trigger(gaulixPwm, taskToStart);
+
+    if (durationMs > 0) {
+        delay(static_cast<uint32_t>(durationMs + (durationMs / 5U)));
+    }
+
+    if (gaulixPwm->ENABLE & PWM_ENABLE_ENABLE_Msk) {
+        nrf_pwm_task_trigger(gaulixPwm, NRF_PWM_TASK_STOP);
+        nrf_pwm_disable(gaulixPwm);
+        gaulixPwm->PSEL.OUT[0] = NRF_PWM_PIN_NOT_CONNECTED;
+    }
+    gaulixHwPwm->releaseOwnership(GAULIX_TONE_TOKEN);
+    return true;
+}
+#endif // ARCH_NRF52
+
+static void gaulixPlayOneBeep(uint8_t pin, unsigned long durationMs)
+{
+#if defined(ARCH_NRF52)
+    gaulixPlayToneDuty(pin, GAULIX_BUZZER_FREQ_HZ, durationMs, GAULIX_BUZZER_DUTY);
+#else
+    tone(pin, GAULIX_BUZZER_FREQ_HZ, durationMs);
+    if (durationMs > 0) {
+        delay(static_cast<uint32_t>(durationMs * 1.3f));
+    }
+#endif
+}
+
+void playGaulixPagerBeep()
+{
+    if (!gaulixCanBuzz()) {
+        return;
+    }
+
+    const uint8_t pin = gaulixBuzzerPin();
+    if (!pin) {
+        return;
+    }
+
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS);
+    delay(GAULIX_BUZZER_PULSE_GAP_MS);
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS);
+}
+
+void playGaulixPagerFinBeep()
+{
+    if (!gaulixCanBuzz()) {
+        return;
+    }
+
+    const uint8_t pin = gaulixBuzzerPin();
+    if (!pin) {
+        return;
+    }
+
+    gaulixPlayOneBeep(pin, GAULIX_BUZZER_DURATION_MS / 2);
+}
+
+#endif // GAULIX_PAGER

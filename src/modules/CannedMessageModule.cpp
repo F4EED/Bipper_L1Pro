@@ -56,6 +56,13 @@ extern ScanI2C::DeviceAddress cardkb_found;
 extern bool osk_found;
 
 static const char *cannedMessagesConfigFile = "/prefs/cannedConf.proto";
+#if defined(GAULIX_PAGER)
+// Slot index N carries Gaulix status code (N + 1). Codes 3 and 4 are empty placeholders.
+static const char GAULIX_FACTORY_CANNED_MESSAGES[] =
+    "PARTI|SUR LES LIEUX|||DEPART HOPITAL|ARRIVEE HOPITAL|DISPONIBLE|INDISPONIBLE|RENTRE|||||||||||||SMUR "
+    "SSL|||DISPO HORS SECTEUR|||||POLICE SSL|GENDARMERIE SSL|EDF SSL|GDF SSL|DDE(Dept) SSL|CG(Dept) SSL|POLICE "
+    "MUNI. SSL|BRIG. VERTES SSL|MAIRE SSL|DIR (xx) SSL|Re\u00e7us (Ack)";
+#endif
 static NodeNum lastDest = NODENUM_BROADCAST;
 static uint8_t lastChannel = 0;
 static bool lastDestSet = false;
@@ -163,10 +170,14 @@ int CannedMessageModule::splitConfiguredMessages()
 {
     int i = 0;
 
-    String canned_messages = cannedMessageModuleConfig.messages;
+#if defined(GAULIX_PAGER)
+    const char *cannedSource = GAULIX_FACTORY_CANNED_MESSAGES;
+#else
+    const char *cannedSource = cannedMessageModuleConfig.messages;
+#endif
 
     // Copy all message parts into the buffer
-    strncpy(this->messageBuffer, canned_messages.c_str(), sizeof(this->messageBuffer));
+    strncpy(this->messageBuffer, cannedSource, sizeof(this->messageBuffer));
 
     // Temporary array to allow for insertion
     const char *tempMessages[CANNED_MESSAGE_MODULE_MESSAGE_MAX_COUNT + 3] = {0};
@@ -2276,11 +2287,16 @@ ProcessMessage CannedMessageModule::handleReceived(const meshtastic_MeshPacket &
 
 void CannedMessageModule::loadProtoForModule()
 {
+#if defined(GAULIX_PAGER)
+    // Re-apply on every boot so stale NVS cannot override Gaulix factory status codes.
+    installDefaultCannedMessageModuleConfig();
+#else
     if (nodeDB->loadProto(cannedMessagesConfigFile, meshtastic_CannedMessageModuleConfig_size,
                           sizeof(meshtastic_CannedMessageModuleConfig), &meshtastic_CannedMessageModuleConfig_msg,
                           &cannedMessageModuleConfig) != LoadFileResult::LOAD_SUCCESS) {
         installDefaultCannedMessageModuleConfig();
     }
+#endif
 }
 /**
  * @brief Save the module config to file.
@@ -2309,7 +2325,12 @@ bool CannedMessageModule::saveProtoForModule()
  */
 void CannedMessageModule::installDefaultCannedMessageModuleConfig()
 {
+#if defined(GAULIX_PAGER)
+    strncpy(cannedMessageModuleConfig.messages, GAULIX_FACTORY_CANNED_MESSAGES, sizeof(cannedMessageModuleConfig.messages) - 1);
+    cannedMessageModuleConfig.messages[sizeof(cannedMessageModuleConfig.messages) - 1] = '\0';
+#else
     strncpy(cannedMessageModuleConfig.messages, "Hi|Bye|Yes|No|Ok", sizeof(cannedMessageModuleConfig.messages));
+#endif
 }
 
 /**
@@ -2353,8 +2374,15 @@ void CannedMessageModule::handleGetCannedMessageModuleMessages(const meshtastic_
     LOG_DEBUG("*** handleGetCannedMessageModuleMessages");
     if (req.decoded.want_response) {
         response->which_payload_variant = meshtastic_AdminMessage_get_canned_message_module_messages_response_tag;
+#if defined(GAULIX_PAGER)
+        strncpy(response->get_canned_message_module_messages_response, GAULIX_FACTORY_CANNED_MESSAGES,
+                sizeof(response->get_canned_message_module_messages_response) - 1);
+        response->get_canned_message_module_messages_response[sizeof(response->get_canned_message_module_messages_response) - 1] =
+            '\0';
+#else
         strncpy(response->get_canned_message_module_messages_response, cannedMessageModuleConfig.messages,
                 sizeof(response->get_canned_message_module_messages_response));
+#endif
     } // Don't send anything if not instructed to. Better than asserting.
 }
 

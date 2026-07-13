@@ -67,6 +67,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "mesh/Default.h"
 #include "mesh/generated/meshtastic/deviceonly.pb.h"
 #include "modules/ExternalNotificationModule.h"
+#if defined(GAULIX_PAGER)
+#include "modules/GaulixPagerModule.h"
+#endif
 #include "modules/WaypointModule.h"
 #include "sleep.h"
 #include "target_specific.h"
@@ -1268,6 +1271,12 @@ void Screen::setFrames(FrameFocus focus)
         return;
     }
 
+#if defined(GAULIX_PAGER)
+    if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
+        return;
+    }
+#endif
+
     uint8_t originalPosition = ui->getUiState()->currentFrame;
     uint8_t previousFrameCount = framesetInfo.frameCount;
     FramesetInfo fsi; // Location of specific frames, for applying focus parameter
@@ -2009,6 +2018,16 @@ int Screen::handleInputEvent(const InputEvent *event)
     LOG_INPUT("Screen Input event %u! kb %u", event->inputEvent, event->kbchar);
     if (!screenOn)
         return 0;
+
+#if defined(GAULIX_PAGER)
+    if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
+        if (event->inputEvent == INPUT_BROKER_SELECT || event->inputEvent == INPUT_BROKER_USER_PRESS) {
+            gaulixPagerModule->userAcknowledgeAlert();
+            return 1;
+        }
+        return 0;
+    }
+#endif
 
     // Handle text input notifications specially - pass input to virtual keyboard
     if (NotificationRenderer::current_notification_type == notificationTypeEnum::text_input) {

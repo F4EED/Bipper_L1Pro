@@ -1,6 +1,9 @@
 #include "configuration.h"
 #if HAS_SCREEN
 #include "MessageRenderer.h"
+#if defined(GAULIX_PAGER)
+#include "modules/GaulixPagerModule.h"
+#endif
 
 // Core includes
 #include "MessageStore.h"
@@ -1069,6 +1072,11 @@ std::vector<int> calculateLineHeights(const std::vector<std::string> &lines, con
 
 void handleNewMessage(OLEDDisplay *display, const StoredMessage &sm, const meshtastic_MeshPacket &packet)
 {
+#if defined(GAULIX_PAGER)
+    if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
+        return;
+    }
+#endif
     if (packet.from != 0) {
         hasUnreadMessage = true;
 
