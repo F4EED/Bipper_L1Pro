@@ -32,6 +32,7 @@
 #include <ctime>
 
 static const char *GAULIX_PAGER_CONFIG_FILE = "/prefs/gaulixpager.cfg";
+static const char *GAULIX_PAGER_CONFIG_TAGS_MARKER = "TAGS";
 
 static constexpr const char *GAULIX_DEFAULT_OWNER_NAME = "Bipper de demo";
 
@@ -80,7 +81,7 @@ meshtastic_MeshPacket GaulixPagerModule::alertSourcePacket = meshtastic_MeshPack
 bool GaulixPagerModule::hasAlertSourcePacket = false;
 char GaulixPagerModule::activationCode[32] = GAULIX_DEFAULT_ACTIVATION_CODE;
 uint8_t GaulixPagerModule::configuredBeepCount = GaulixPagerModule::DEFAULT_BEEP_COUNT;
-uint8_t GaulixPagerModule::configuredServiceTag = 0;
+char GaulixPagerModule::configuredServiceTagValues[4][GaulixPagerModule::SERVICE_TAG_VALUE_LEN] = {};
 uint32_t GaulixPagerModule::alertStartedMs = 0;
 uint32_t GaulixPagerModule::lastContinuousBeepMs = 0;
 uint32_t GaulixPagerModule::lastLowBatteryBeepMs = 0;
@@ -133,7 +134,7 @@ void GaulixPagerModule::loadConfig()
     strncpy(activationCode, GAULIX_DEFAULT_ACTIVATION_CODE, sizeof(activationCode) - 1);
     activationCode[sizeof(activationCode) - 1] = '\0';
     configuredBeepCount = DEFAULT_BEEP_COUNT;
-    configuredServiceTag = 0;
+    memset(configuredServiceTagValues, 0, sizeof(configuredServiceTagValues));
 
 #ifdef FSCom
     auto file = FSCom.open(GAULIX_PAGER_CONFIG_FILE, FILE_O_READ);
@@ -153,13 +154,73 @@ void GaulixPagerModule::loadConfig()
         if (beepCount >= 0 && beepCount <= 20) {
             configuredBeepCount = static_cast<uint8_t>(beepCount);
         }
+        // Consomme le saut de ligne après le nombre de bips.
+        while (file.available() && file.peek() != '\n' && file.peek() != '\r') {
+            file.read();
+        }
+        while (file.available() && (file.peek() == '\n' || file.peek() == '\r')) {
+            file.read();
+        }
     }
 
-    if (file.available()) {
-        const long serviceTag = file.parseInt();
-        if (serviceTag >= 0 && serviceTag <= 4) {
-            configuredServiceTag = static_cast<uint8_t>(serviceTag);
+    if (!file.available()) {
+        file.close();
+        return;
+    }
+
+    String firstTagLine = file.readStringUntil('\n');
+    firstTagLine.trim();
+
+    if (!file.available()) {
+        // Ancien format 3 lignes : masque numérique T1..T4
+        const long legacyMask = firstTagLine.toInt();
+        auto migrateLegacyTag = [](uint8_t tag) {
+            switch (tag) {
+            case 1:
+                setServiceTagValue(1, "SDIS42");
+                break;
+            case 2:
+                setServiceTagValue(2, "UIDIOM42");
+                break;
+            case 3:
+                setServiceTagValue(3, "Ricamarie");
+                break;
+            case 4:
+                setServiceTagValue(4, "ligerien");
+                break;
+            default:
+                break;
+            }
+        };
+        if (legacyMask >= 1 && legacyMask <= 4) {
+            migrateLegacyTag(static_cast<uint8_t>(legacyMask));
+        } else if (legacyMask > 0 && legacyMask <= 15) {
+            for (uint8_t tag = 1; tag <= 4; tag++) {
+                if (legacyMask & static_cast<uint8_t>(1U << (tag - 1))) {
+                    migrateLegacyTag(tag);
+                }
+            }
         }
+        file.close();
+        return;
+    }
+
+    if (firstTagLine.equals(GAULIX_PAGER_CONFIG_TAGS_MARKER)) {
+        for (uint8_t tag = 1; tag <= 4 && file.available(); tag++) {
+            String valueLine = file.readStringUntil('\n');
+            valueLine.trim();
+            setServiceTagValue(tag, valueLine.c_str());
+        }
+        file.close();
+        return;
+    }
+
+    // v1.9 sans marqueur TAGS : première ligne = T1
+    setServiceTagValue(1, firstTagLine.c_str());
+    for (uint8_t tag = 2; tag <= 4 && file.available(); tag++) {
+        String valueLine = file.readStringUntil('\n');
+        valueLine.trim();
+        setServiceTagValue(tag, valueLine.c_str());
     }
     file.close();
 #endif
@@ -169,9 +230,19 @@ bool GaulixPagerModule::saveConfig()
 {
 #ifdef FSCom
     SafeFile file(GAULIX_PAGER_CONFIG_FILE, true);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%s\n%u\n%u\n", activationCode, configuredBeepCount, configuredServiceTag);
-    file.write(reinterpret_cast<const uint8_t *>(buf), strlen(buf));
+    char buf[96];
+    int len = snprintf(buf, sizeof(buf), "%s\n%u\n%s\n", activationCode, configuredBeepCount, GAULIX_PAGER_CONFIG_TAGS_MARKER);
+    if (len <= 0 || static_cast<size_t>(len) >= sizeof(buf)) {
+        return false;
+    }
+    file.write(reinterpret_cast<const uint8_t *>(buf), len);
+    for (uint8_t tag = 1; tag <= 4; tag++) {
+        len = snprintf(buf, sizeof(buf), "%s\n", getServiceTagValue(tag));
+        if (len <= 0 || static_cast<size_t>(len) >= sizeof(buf)) {
+            return false;
+        }
+        file.write(reinterpret_cast<const uint8_t *>(buf), len);
+    }
     return file.close();
 #else
     return false;
@@ -297,10 +368,42 @@ int GaulixPagerModule::findBaliseChannelIndex()
     return 0;
 }
 
+bool GaulixPagerModule::isLocalConfigCommand(const char *msg)
+{
+    if (parseStatusCommand(msg)) {
+        return true;
+    }
+    uint8_t beepCount = 0;
+    if (parseBeepCommand(msg, &beepCount)) {
+        return true;
+    }
+    uint8_t tag = 0;
+    char tagValue[SERVICE_TAG_VALUE_LEN];
+    if (parseTagValueSetCommand(msg, &tag, tagValue, sizeof(tagValue))) {
+        return true;
+    }
+    if (parseTagSetBulkCommand(msg, false)) {
+        return true;
+    }
+    char oldCode[32];
+    char newCode[32];
+    return parseCodeCommand(msg, oldCode, sizeof(oldCode), newCode, sizeof(newCode));
+}
+
 bool GaulixPagerModule::isAcceptedPacket(const meshtastic_MeshPacket &mp)
 {
     if (isFromUs(&mp)) {
-        return false;
+        if (!isToUs(&mp) || mp.decoded.payload.size == 0) {
+            return false;
+        }
+        char buf[260];
+        memset(buf, 0, sizeof(buf));
+        size_t n = mp.decoded.payload.size;
+        if (n > sizeof(buf) - 1) {
+            n = sizeof(buf) - 1;
+        }
+        memcpy(buf, mp.decoded.payload.bytes, n);
+        return isLocalConfigCommand(buf);
     }
 
     if (isToUs(&mp)) {
@@ -480,32 +583,126 @@ bool GaulixPagerModule::parseInfoCommand(const char *msg, const char **outText)
     return true;
 }
 
-bool GaulixPagerModule::parseTagSetCommand(const char *msg, uint8_t *outTag)
+void GaulixPagerModule::setServiceTagValue(uint8_t tag, const char *value)
+{
+    if (tag < 1 || tag > 4) {
+        return;
+    }
+    char *dest = configuredServiceTagValues[tag - 1];
+    if (!value || !value[0]) {
+        dest[0] = '\0';
+        return;
+    }
+    strncpy(dest, value, SERVICE_TAG_VALUE_LEN - 1);
+    dest[SERVICE_TAG_VALUE_LEN - 1] = '\0';
+}
+
+const char *GaulixPagerModule::getServiceTagValue(uint8_t tag)
+{
+    if (tag < 1 || tag > 4) {
+        return "";
+    }
+    return configuredServiceTagValues[tag - 1];
+}
+
+bool GaulixPagerModule::parseTagValueSetCommand(const char *msg, uint8_t *outTag, char *outValue, size_t valueLen)
 {
     msg = skipSpaces(msg);
-    if (!msg || strncmp(msg, "#tag", 4) != 0 || (msg[4] != '\0' && !std::isspace(static_cast<unsigned char>(msg[4])))) {
+    if (!msg || strncmp(msg, "#tagval", 7) != 0 ||
+        (msg[7] != '\0' && !std::isspace(static_cast<unsigned char>(msg[7])))) {
         return false;
     }
 
-    const char *arg = skipSpaces(msg + 4);
+    const char *arg = skipSpaces(msg + 7);
     if (!arg || !arg[0]) {
         return false;
     }
 
     char *end = nullptr;
-    const long value = strtol(arg, &end, 10);
-    if (end == arg || (end && *skipSpaces(end) != '\0') || value < 0 || value > 4) {
+    const long tagNum = strtol(arg, &end, 10);
+    if (end == arg || tagNum < 1 || tagNum > 4) {
         return false;
     }
 
-    *outTag = static_cast<uint8_t>(value);
+    const char *value = skipSpaces(end);
+    if (outTag) {
+        *outTag = static_cast<uint8_t>(tagNum);
+    }
+    if (outValue && valueLen > 0) {
+        if (!value || !value[0]) {
+            outValue[0] = '\0';
+        } else {
+            strncpy(outValue, value, valueLen - 1);
+            outValue[valueLen - 1] = '\0';
+        }
+    }
     return true;
 }
 
-bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, const char **outText)
+bool GaulixPagerModule::parseTagSetBulkCommand(const char *msg, bool applyChanges)
 {
     msg = skipSpaces(msg);
-    if (!msg || !outTag || !outText || msg[0] != '#' || msg[1] != 'T') {
+    if (!msg || strncmp(msg, "#tagset", 7) != 0 ||
+        (msg[7] != '\0' && !std::isspace(static_cast<unsigned char>(msg[7])))) {
+        return false;
+    }
+
+    const char *arg = skipSpaces(msg + 7);
+    if (!arg || !arg[0]) {
+        return false;
+    }
+
+    bool any = false;
+    const char *cursor = arg;
+    while (cursor && cursor[0]) {
+        if (cursor[0] == ',') {
+            cursor++;
+            continue;
+        }
+        if ((cursor[0] != 'T' && cursor[0] != 't') || cursor[1] < '1' || cursor[1] > '4' || cursor[2] != '=') {
+            return false;
+        }
+
+        const uint8_t tag = static_cast<uint8_t>(cursor[1] - '0');
+        const char *valueStart = cursor + 3;
+        const char *valueEnd = valueStart;
+        while (valueEnd[0] && valueEnd[0] != ',') {
+            valueEnd++;
+        }
+
+        char value[SERVICE_TAG_VALUE_LEN];
+        size_t valueLen = static_cast<size_t>(valueEnd - valueStart);
+        if (valueLen >= sizeof(value)) {
+            valueLen = sizeof(value) - 1;
+        }
+        memcpy(value, valueStart, valueLen);
+        value[valueLen] = '\0';
+
+        if (applyChanges) {
+            setServiceTagValue(tag, value);
+        }
+        any = true;
+        cursor = valueEnd[0] ? valueEnd + 1 : valueEnd;
+    }
+
+    return any;
+}
+
+bool GaulixPagerModule::isInvalidServiceTagAlert(const char *msg)
+{
+    msg = skipSpaces(msg);
+    if (!msg || msg[0] != '#' || msg[1] != 'T') {
+        return false;
+    }
+    char validator[SERVICE_TAG_VALUE_LEN];
+    return !parseServiceTagAlert(msg, nullptr, validator, sizeof(validator), nullptr);
+}
+
+bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, char *outValidator, size_t validatorLen,
+                                             const char **outText)
+{
+    msg = skipSpaces(msg);
+    if (!msg || msg[0] != '#' || msg[1] != 'T') {
         return false;
     }
 
@@ -517,22 +714,50 @@ bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, c
         return false;
     }
 
-    *outTag = static_cast<uint8_t>(msg[2] - '0');
-    const char *text = skipSpaces(msg + 3);
-    if (!text || !text[0]) {
+    const char *rest = skipSpaces(msg + 3);
+    if (!rest || !rest[0]) {
         return false;
     }
 
-    *outText = text;
+    char validator[SERVICE_TAG_VALUE_LEN];
+    size_t vi = 0;
+    while (rest[vi] && !std::isspace(static_cast<unsigned char>(rest[vi])) && vi < sizeof(validator) - 1) {
+        validator[vi] = rest[vi];
+        vi++;
+    }
+    validator[vi] = '\0';
+    if (vi == 0) {
+        return false;
+    }
+
+    const char *text = skipSpaces(rest + vi);
+    if (!text || !text[0]) {
+        text = validator;
+    }
+
+    if (outTag) {
+        *outTag = static_cast<uint8_t>(msg[2] - '0');
+    }
+    if (outValidator && validatorLen > 0) {
+        strncpy(outValidator, validator, validatorLen - 1);
+        outValidator[validatorLen - 1] = '\0';
+    }
+    if (outText) {
+        *outText = text;
+    }
     return true;
 }
 
-bool GaulixPagerModule::serviceTagMatches(uint8_t tag)
+bool GaulixPagerModule::serviceTagMatches(uint8_t tag, const char *validator)
 {
-    if (tag < 1 || tag > 4) {
+    if (tag < 1 || tag > 4 || !validator || !validator[0]) {
         return false;
     }
-    return configuredServiceTag == tag;
+    const char *configured = getServiceTagValue(tag);
+    if (!configured[0]) {
+        return false;
+    }
+    return strcasecmp(validator, configured) == 0;
 }
 
 bool GaulixPagerModule::activationCodeMatches(const char *code)
@@ -830,8 +1055,8 @@ void GaulixPagerModule::sendStatusReply(const meshtastic_MeshPacket &mp)
         snprintf(bipsLine, sizeof(bipsLine), "%u", configuredBeepCount);
     }
 
-    char reply[160];
-    char tagLine[16];
+    char reply[280];
+    char tagLine[SERVICE_TAG_LINE_LEN];
     formatServiceTagLine(tagLine, sizeof(tagLine));
     snprintf(reply, sizeof(reply), "Pager Gaulix - %s | Alertes: %lu | %s | Bips: %s | %s | Code: %s",
              alertActive ? "En alerte" : "En ecoute", static_cast<unsigned long>(alertCount), batteryLine, bipsLine, tagLine,
@@ -962,35 +1187,52 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
 
     const char *infoText = nullptr;
     if (parseInfoCommand(buf, &infoText)) {
-        LOG_INFO("GaulixPager: info '%s' (sans alerte)", infoText && infoText[0] ? infoText : "");
-        addAlertHistoryEntry(infoText, mp, true);
-        prepareBuzzerForAlert();
-        playPimPoms(INFO_PIM_POM_COUNT);
+        LOG_DEBUG("GaulixPager: #info ignore (alertes reservees aux tags T1-T4)");
         return ProcessMessage::STOP;
     }
 
-    uint8_t tagSet = 0;
-    if (parseTagSetCommand(buf, &tagSet)) {
-        configuredServiceTag = tagSet;
-        saveConfig();
-        char reply[48];
-        if (tagSet == 0) {
-            snprintf(reply, sizeof(reply), "Pager OK — tag: aucun");
-        } else {
-            snprintf(reply, sizeof(reply), "Pager OK — tag: T%u", tagSet);
+    if (parseTagSetBulkCommand(buf, true)) {
+        if (!saveConfig()) {
+            LOG_WARN("GaulixPager: echec sauvegarde tags");
         }
+        char tagLine[SERVICE_TAG_LINE_LEN];
+        formatServiceTagLine(tagLine, sizeof(tagLine));
+        char reply[192];
+        snprintf(reply, sizeof(reply), "Pager OK — %s", tagLine);
+        sendReplyDm(mp, reply);
+        return ProcessMessage::STOP;
+    }
+
+    uint8_t tagNum = 0;
+    char tagValue[SERVICE_TAG_VALUE_LEN];
+    if (parseTagValueSetCommand(buf, &tagNum, tagValue, sizeof(tagValue))) {
+        setServiceTagValue(tagNum, tagValue);
+        if (!saveConfig()) {
+            LOG_WARN("GaulixPager: echec sauvegarde tag T%u", tagNum);
+        }
+        char tagLine[SERVICE_TAG_LINE_LEN];
+        formatServiceTagLine(tagLine, sizeof(tagLine));
+        char reply[192];
+        snprintf(reply, sizeof(reply), "Pager OK — %s", tagLine);
         sendReplyDm(mp, reply);
         return ProcessMessage::STOP;
     }
 
     uint8_t serviceTag = 0;
+    char validator[SERVICE_TAG_VALUE_LEN];
     const char *tagAlertText = nullptr;
-    if (parseServiceTagAlert(buf, &serviceTag, &tagAlertText)) {
-        if (!serviceTagMatches(serviceTag)) {
-            LOG_DEBUG("GaulixPager: T%u ignore (local T%u)", serviceTag, configuredServiceTag);
+    if (parseServiceTagAlert(buf, &serviceTag, validator, sizeof(validator), &tagAlertText)) {
+        if (!serviceTagMatches(serviceTag, validator)) {
+            LOG_DEBUG("GaulixPager: T%u %s ignore (local T%u=%s)", serviceTag, validator, serviceTag,
+                      getServiceTagValue(serviceTag));
             return ProcessMessage::STOP;
         }
         triggerAlert(tagAlertText, mp);
+        return ProcessMessage::STOP;
+    }
+
+    if (isInvalidServiceTagAlert(buf)) {
+        LOG_DEBUG("GaulixPager: tag T inconnu ou invalide, ignore");
         return ProcessMessage::STOP;
     }
 
@@ -998,11 +1240,12 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
     const bool isAlerte = parseAlertWithText(buf, "#alerte", &alertTextArg);
     const bool isSecours = !isAlerte && parseAlertWithText(buf, "#secours", &alertTextArg);
     if (isAlerte || isSecours) {
-        triggerAlert(alertTextArg, mp);
+        LOG_DEBUG("GaulixPager: #%s sans tag entite, ignore", isAlerte ? "alerte" : "secours");
         return ProcessMessage::STOP;
     }
 
-    return ProcessMessage::CONTINUE;
+    LOG_DEBUG("GaulixPager: message sans tag T1-T4, ignore");
+    return ProcessMessage::STOP;
 }
 
 int GaulixPagerModule::handleInputEvent(const InputEvent *event)
@@ -1127,11 +1370,29 @@ void GaulixPagerModule::formatLastAlertLine(char *buf, size_t len)
 
 void GaulixPagerModule::formatServiceTagLine(char *buf, size_t len)
 {
-    if (configuredServiceTag == 0) {
-        snprintf(buf, len, "Tag: aucun");
+    if (!buf || len == 0) {
         return;
     }
-    snprintf(buf, len, "Tag: T%u", configuredServiceTag);
+
+    size_t offset = 0;
+    offset += snprintf(buf + offset, len - offset, "Tag: ");
+    bool first = true;
+    bool any = false;
+    for (uint8_t tag = 1; tag <= 4; tag++) {
+        const char *value = getServiceTagValue(tag);
+        if (!value[0]) {
+            continue;
+        }
+        any = true;
+        offset += snprintf(buf + offset, len - offset, "%sT%u=%s", first ? "" : ",", tag, value);
+        first = false;
+        if (offset >= len) {
+            break;
+        }
+    }
+    if (!any) {
+        snprintf(buf, len, "Tag: aucun");
+    }
 }
 
 static bool gaulixOwnerNameFitsOnLine(OLEDDisplay *display)

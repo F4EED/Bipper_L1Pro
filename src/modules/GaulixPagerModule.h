@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.6"
+#define GAULIX_PAGER_VERSION "v1.9.1"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 
@@ -56,6 +56,8 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
 
     static constexpr uint8_t DEFAULT_BEEP_COUNT = 3;
     static constexpr uint8_t INFO_PIM_POM_COUNT = 3;
+    static constexpr size_t SERVICE_TAG_VALUE_LEN = 24;
+    static constexpr size_t SERVICE_TAG_LINE_LEN = 128;
     static constexpr uint32_t LED_BLINK_MS = 300;
     static constexpr uint32_t ALERT_MAX_DURATION_MS = 30UL * 60UL * 1000UL;
     static constexpr uint32_t CONTINUOUS_BEEP_INTERVAL_MS = GAULIX_CONTINUOUS_BEEP_INTERVAL_MS;
@@ -87,7 +89,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool hasAlertSourcePacket;
     static char activationCode[32];
     static uint8_t configuredBeepCount;
-    static uint8_t configuredServiceTag; // 0=aucun, 1-4 = T1..T4
+    static char configuredServiceTagValues[4][SERVICE_TAG_VALUE_LEN];
     static uint32_t alertStartedMs;
     static uint32_t lastContinuousBeepMs;
 
@@ -106,11 +108,17 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool parseCodeCommand(const char *msg, char *oldCode, size_t oldLen, char *newCode, size_t newLen);
     static bool parseAlertWithText(const char *msg, const char *keyword, const char **outText);
     static bool parseInfoCommand(const char *msg, const char **outText);
-    static bool parseTagSetCommand(const char *msg, uint8_t *outTag);
-    static bool parseServiceTagAlert(const char *msg, uint8_t *outTag, const char **outText);
-    static bool serviceTagMatches(uint8_t tag);
+    static bool parseTagValueSetCommand(const char *msg, uint8_t *outTag, char *outValue, size_t valueLen);
+    static bool parseTagSetBulkCommand(const char *msg, bool applyChanges);
+    static bool parseServiceTagAlert(const char *msg, uint8_t *outTag, char *outValidator, size_t validatorLen,
+                                     const char **outText);
+    static bool isInvalidServiceTagAlert(const char *msg);
+    static bool serviceTagMatches(uint8_t tag, const char *validator);
+    static void setServiceTagValue(uint8_t tag, const char *value);
+    static const char *getServiceTagValue(uint8_t tag);
 
     static bool isAcceptedPacket(const meshtastic_MeshPacket &mp);
+    static bool isLocalConfigCommand(const char *msg);
     static bool isPagerInternalReply(const char *msg);
     static void prepareBuzzerForAlert();
     void scheduleAlertMaintenance();
