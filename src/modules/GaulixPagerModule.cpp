@@ -748,16 +748,120 @@ bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, c
     return true;
 }
 
-bool GaulixPagerModule::serviceTagMatches(uint8_t tag, const char *validator)
+bool GaulixPagerModule::serviceTagMatches(const char *entity)
 {
-    if (tag < 1 || tag > 4 || !validator || !validator[0]) {
+    if (!entity || !entity[0]) {
         return false;
     }
-    const char *configured = getServiceTagValue(tag);
-    if (!configured[0]) {
+    for (uint8_t tag = 1; tag <= 4; tag++) {
+        const char *configured = getServiceTagValue(tag);
+        if (configured[0] && strcasecmp(entity, configured) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GaulixPagerModule::isReservedEntityHashtag(const char *name)
+{
+    if (!name || !name[0]) {
+        return true;
+    }
+    static const char *const kReserved[] = {"alerte", "secours", "info", "fin",   "b",     "code", "status",
+                                            "tagval", "tagset",  "tag",  "T1",    "T2",    "T3",   "T4"};
+    for (const char *r : kReserved) {
+        if (strcasecmp(name, r) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GaulixPagerModule::entityTagsMatchMembership(const char entities[][SERVICE_TAG_VALUE_LEN], size_t entityCount)
+{
+    // Aucun tag entité → broadcast : tous les Bippers réagissent.
+    if (entityCount == 0) {
+        return true;
+    }
+    for (size_t i = 0; i < entityCount; i++) {
+        if (serviceTagMatches(entities[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, char *outText,
+                                                      size_t textLen, char entities[][SERVICE_TAG_VALUE_LEN],
+                                                      size_t maxEntities, size_t *outEntityCount)
+{
+    msg = skipSpaces(msg);
+    if (!msg || !outKind || !outText || textLen == 0 || !outEntityCount) {
         return false;
     }
-    return strcasecmp(validator, configured) == 0;
+
+    size_t cmdLen = 0;
+    if (strncmp(msg, "#alerte", 7) == 0) {
+        *outKind = PagerCommandKind::Alerte;
+        cmdLen = 7;
+    } else if (strncmp(msg, "#secours", 8) == 0) {
+        *outKind = PagerCommandKind::Secours;
+        cmdLen = 8;
+    } else if (strncmp(msg, "#info", 5) == 0 || strncmp(msg, "#Info", 5) == 0) {
+        *outKind = PagerCommandKind::Info;
+        cmdLen = 5;
+    } else {
+        return false;
+    }
+
+    if (msg[cmdLen] != '\0' && !std::isspace(static_cast<unsigned char>(msg[cmdLen]))) {
+        return false;
+    }
+
+    outText[0] = '\0';
+    *outEntityCount = 0;
+    size_t textOffset = 0;
+
+    const char *cursor = skipSpaces(msg + cmdLen);
+    while (cursor && cursor[0]) {
+        const char *tokenEnd = cursor;
+        while (tokenEnd[0] && !std::isspace(static_cast<unsigned char>(tokenEnd[0]))) {
+            tokenEnd++;
+        }
+        const size_t tokenLen = static_cast<size_t>(tokenEnd - cursor);
+        if (tokenLen == 0) {
+            break;
+        }
+
+        if (cursor[0] == '#' && tokenLen > 1) {
+            char name[SERVICE_TAG_VALUE_LEN];
+            size_t nameLen = tokenLen - 1;
+            if (nameLen >= sizeof(name)) {
+                nameLen = sizeof(name) - 1;
+            }
+            memcpy(name, cursor + 1, nameLen);
+            name[nameLen] = '\0';
+            if (!isReservedEntityHashtag(name) && entities && maxEntities > 0 && *outEntityCount < maxEntities) {
+                strncpy(entities[*outEntityCount], name, SERVICE_TAG_VALUE_LEN - 1);
+                entities[*outEntityCount][SERVICE_TAG_VALUE_LEN - 1] = '\0';
+                (*outEntityCount)++;
+            }
+        } else {
+            if (textOffset > 0 && textOffset + 1 < textLen) {
+                outText[textOffset++] = ' ';
+            }
+            const size_t copyLen = (tokenLen < textLen - textOffset - 1) ? tokenLen : (textLen - textOffset - 1);
+            if (copyLen > 0) {
+                memcpy(outText + textOffset, cursor, copyLen);
+                textOffset += copyLen;
+                outText[textOffset] = '\0';
+            }
+        }
+
+        cursor = skipSpaces(tokenEnd);
+    }
+
+    return true;
 }
 
 bool GaulixPagerModule::activationCodeMatches(const char *code)
@@ -900,6 +1004,15 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     }
 
     scheduleAlertMaintenance();
+}
+
+void GaulixPagerModule::triggerInfo(const char *text, const meshtastic_MeshPacket &mp)
+{
+    const char *display = (text && text[0]) ? text : "Info";
+    LOG_INFO("GaulixPager: info '%s' de 0x%08x", display, getFrom(&mp));
+    addAlertHistoryEntry(display, mp, true);
+    prepareBuzzerForAlert();
+    playPimPoms(INFO_PIM_POM_COUNT);
 }
 
 void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char *text)
@@ -1185,9 +1298,21 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::STOP;
     }
 
-    const char *infoText = nullptr;
-    if (parseInfoCommand(buf, &infoText)) {
-        LOG_DEBUG("GaulixPager: #info ignore (alertes reservees aux tags T1-T4)");
+    PagerCommandKind kind = PagerCommandKind::Alerte;
+    char alertBody[96];
+    char entityTags[MAX_ALERT_ENTITIES][SERVICE_TAG_VALUE_LEN];
+    size_t entityCount = 0;
+    if (parseAlertCommandWithEntities(buf, &kind, alertBody, sizeof(alertBody), entityTags, MAX_ALERT_ENTITIES,
+                                      &entityCount)) {
+        if (!entityTagsMatchMembership(entityTags, entityCount)) {
+            LOG_DEBUG("GaulixPager: ignore (aucune entité locale parmi les tags)");
+            return ProcessMessage::STOP;
+        }
+        if (kind == PagerCommandKind::Info) {
+            triggerInfo(alertBody, mp);
+        } else {
+            triggerAlert(alertBody[0] ? alertBody : (kind == PagerCommandKind::Secours ? "Secours" : "Alerte secours"), mp);
+        }
         return ProcessMessage::STOP;
     }
 
@@ -1222,9 +1347,9 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
     char validator[SERVICE_TAG_VALUE_LEN];
     const char *tagAlertText = nullptr;
     if (parseServiceTagAlert(buf, &serviceTag, validator, sizeof(validator), &tagAlertText)) {
-        if (!serviceTagMatches(serviceTag, validator)) {
-            LOG_DEBUG("GaulixPager: T%u %s ignore (local T%u=%s)", serviceTag, validator, serviceTag,
-                      getServiceTagValue(serviceTag));
+        // Membership is by entity name across any slot (T1–T4), not by alert slot index.
+        if (!serviceTagMatches(validator)) {
+            LOG_DEBUG("GaulixPager: #T%u %s ignore (pas membre de cette entite)", serviceTag, validator);
             return ProcessMessage::STOP;
         }
         triggerAlert(tagAlertText, mp);
@@ -1236,15 +1361,7 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::STOP;
     }
 
-    const char *alertTextArg = nullptr;
-    const bool isAlerte = parseAlertWithText(buf, "#alerte", &alertTextArg);
-    const bool isSecours = !isAlerte && parseAlertWithText(buf, "#secours", &alertTextArg);
-    if (isAlerte || isSecours) {
-        LOG_DEBUG("GaulixPager: #%s sans tag entite, ignore", isAlerte ? "alerte" : "secours");
-        return ProcessMessage::STOP;
-    }
-
-    LOG_DEBUG("GaulixPager: message sans tag T1-T4, ignore");
+    LOG_DEBUG("GaulixPager: message non reconnu, ignore");
     return ProcessMessage::STOP;
 }
 
