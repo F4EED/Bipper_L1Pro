@@ -94,6 +94,7 @@ size_t GaulixPagerModule::alertHistoryScrollIndex = 0;
 size_t GaulixPagerModule::currentAlertHistoryPhysIdx = SIZE_MAX;
 GaulixPagerModule::SeenPacket GaulixPagerModule::seenPackets[GaulixPagerModule::ALERT_PACKET_DEDUP_SIZE] = {};
 size_t GaulixPagerModule::seenPacketIndex = 0;
+uint8_t GaulixPagerModule::pagerFrameIndex = 255;
 
 GaulixPagerModule::GaulixPagerModule()
     : SinglePortModule("gaulixpager", meshtastic_PortNum_TEXT_MESSAGE_APP), concurrency::OSThread("GaulixPager")
@@ -116,9 +117,14 @@ GaulixPagerModule::GaulixPagerModule()
     moduleConfig.external_notification.use_pwm = true;
 #endif
     applyChannelMuteDefaults();
-    // Force EU 868 MHz on every boot; stale persisted region breaks Gaulix mesh interoperability.
+    ensureGaulixChannelsInstalled();
+    // Force Gaulix operational defaults on every boot (stale flash must not diverge).
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
     config.lora.tx_enabled = true;
+    config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_LOCAL_ONLY;
+    config.position.gps_update_interval = 200;
+    config.bluetooth.fixed_pin = 123456;
+    config.bluetooth.mode = meshtastic_Config_BluetoothConfig_PairingMode_FIXED_PIN;
     applyGaulixOwnerNameDefaults();
     loadConfig();
 #if !defined(MESHTASTIC_EXCLUDE_INPUTBROKER)
@@ -135,6 +141,7 @@ void GaulixPagerModule::loadConfig()
     activationCode[sizeof(activationCode) - 1] = '\0';
     configuredBeepCount = DEFAULT_BEEP_COUNT;
     memset(configuredServiceTagValues, 0, sizeof(configuredServiceTagValues));
+    setServiceTagValue(1, GAULIX_DEFAULT_SERVICE_TAG_T1);
 
 #ifdef FSCom
     auto file = FSCom.open(GAULIX_PAGER_CONFIG_FILE, FILE_O_READ);
@@ -224,6 +231,10 @@ void GaulixPagerModule::loadConfig()
     }
     file.close();
 #endif
+
+    if (!getServiceTagValue(1)[0]) {
+        setServiceTagValue(1, GAULIX_DEFAULT_SERVICE_TAG_T1);
+    }
 }
 
 bool GaulixPagerModule::saveConfig()
@@ -261,6 +272,34 @@ void GaulixPagerModule::applyChannelMuteDefaults()
             ch.settings.has_module_settings = true;
         }
         ch.settings.module_settings.is_muted = (static_cast<int>(i) != alerteCh);
+    }
+}
+
+void GaulixPagerModule::ensureGaulixChannelsInstalled()
+{
+    bool hasBalise = false;
+    bool hasAlerte = false;
+    for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
+        const meshtastic_Channel &ch = channels.getByIndex(i);
+        if (!ch.settings.name[0]) {
+            continue;
+        }
+        if (strcmp(ch.settings.name, "Fr_Balise") == 0) {
+            hasBalise = true;
+        }
+        if (strcmp(ch.settings.name, "Alerte") == 0) {
+            hasAlerte = true;
+        }
+    }
+    if (hasBalise && hasAlerte) {
+        return;
+    }
+
+    LOG_INFO("GaulixPager: canaux Gaulix absents — installation des canaux usine");
+    channels.initDefaults();
+    applyChannelMuteDefaults();
+    if (nodeDB) {
+        nodeDB->saveToDisk(SEGMENT_CHANNELS);
     }
 }
 
@@ -467,11 +506,56 @@ const char *GaulixPagerModule::skipSpaces(const char *msg)
 
 bool GaulixPagerModule::parseFinCommand(const char *msg)
 {
+    char affiliation[SERVICE_TAG_VALUE_LEN];
+    return parseFinCommandWithAffiliation(msg, affiliation, sizeof(affiliation));
+}
+
+bool GaulixPagerModule::parseFinCommandWithAffiliation(const char *msg, char *outAffiliation, size_t affiliationLen)
+{
+    if (outAffiliation && affiliationLen > 0) {
+        outAffiliation[0] = '\0';
+    }
     msg = skipSpaces(msg);
-    if (!msg) {
+    if (!msg || strncmp(msg, "#fin", 4) != 0 ||
+        (msg[4] != '\0' && !std::isspace(static_cast<unsigned char>(msg[4])))) {
         return false;
     }
-    return strncmp(msg, "#fin", 4) == 0 && (msg[4] == '\0' || std::isspace(static_cast<unsigned char>(msg[4])));
+
+    const char *cursor = skipSpaces(msg + 4);
+    // Format: #fin [#appartenance] — ignore optional free text before trailing #tag.
+    const char *lastHash = nullptr;
+    while (cursor && cursor[0]) {
+        if (cursor[0] == '#') {
+            lastHash = cursor;
+        }
+        const char *tokenEnd = cursor;
+        while (tokenEnd[0] && !std::isspace(static_cast<unsigned char>(tokenEnd[0]))) {
+            tokenEnd++;
+        }
+        cursor = skipSpaces(tokenEnd);
+    }
+
+    if (lastHash && outAffiliation && affiliationLen > 1) {
+        const char *name = lastHash + 1;
+        size_t nameLen = 0;
+        while (name[nameLen] && !std::isspace(static_cast<unsigned char>(name[nameLen])) &&
+               nameLen < affiliationLen - 1) {
+            nameLen++;
+        }
+        if (nameLen > 0) {
+            char tmp[SERVICE_TAG_VALUE_LEN];
+            if (nameLen >= sizeof(tmp)) {
+                nameLen = sizeof(tmp) - 1;
+            }
+            memcpy(tmp, name, nameLen);
+            tmp[nameLen] = '\0';
+            if (!isReservedEntityHashtag(tmp)) {
+                strncpy(outAffiliation, tmp, affiliationLen - 1);
+                outAffiliation[affiliationLen - 1] = '\0';
+            }
+        }
+    }
+    return true;
 }
 
 bool GaulixPagerModule::parseStatusCommand(const char *msg)
@@ -755,7 +839,13 @@ bool GaulixPagerModule::serviceTagMatches(const char *entity)
     }
     for (uint8_t tag = 1; tag <= 4; tag++) {
         const char *configured = getServiceTagValue(tag);
-        if (configured[0] && strcasecmp(entity, configured) == 0) {
+        if (!configured[0]) {
+            continue;
+        }
+        if (strcasecmp(configured, GAULIX_DEFAULT_SERVICE_TAG_T1) == 0) {
+            return true;
+        }
+        if (strcasecmp(entity, configured) == 0) {
             return true;
         }
     }
@@ -767,7 +857,7 @@ bool GaulixPagerModule::isReservedEntityHashtag(const char *name)
     if (!name || !name[0]) {
         return true;
     }
-    static const char *const kReserved[] = {"alerte", "secours", "info", "fin",   "b",     "code", "status",
+    static const char *const kReserved[] = {"alerte", "secours", "info", "vigilance", "fin", "b", "code", "status",
                                             "tagval", "tagset",  "tag",  "T1",    "T2",    "T3",   "T4"};
     for (const char *r : kReserved) {
         if (strcasecmp(name, r) == 0) {
@@ -807,6 +897,9 @@ bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerComm
     } else if (strncmp(msg, "#secours", 8) == 0) {
         *outKind = PagerCommandKind::Secours;
         cmdLen = 8;
+    } else if (strncmp(msg, "#vigilance", 10) == 0) {
+        *outKind = PagerCommandKind::Vigilance;
+        cmdLen = 10;
     } else if (strncmp(msg, "#info", 5) == 0 || strncmp(msg, "#Info", 5) == 0) {
         *outKind = PagerCommandKind::Info;
         cmdLen = 5;
@@ -820,10 +913,14 @@ bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerComm
 
     outText[0] = '\0';
     *outEntityCount = 0;
-    size_t textOffset = 0;
 
+    // Format: #cmd <texte...> [#appartenance]
+    // Seul le dernier hashtag non réservé est l'appartenance (T1–T4 à la réception).
+    const char *tokens[48];
+    size_t tokenLens[48];
+    size_t tokenCount = 0;
     const char *cursor = skipSpaces(msg + cmdLen);
-    while (cursor && cursor[0]) {
+    while (cursor && cursor[0] && tokenCount < 48) {
         const char *tokenEnd = cursor;
         while (tokenEnd[0] && !std::isspace(static_cast<unsigned char>(tokenEnd[0]))) {
             tokenEnd++;
@@ -832,33 +929,41 @@ bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerComm
         if (tokenLen == 0) {
             break;
         }
-
-        if (cursor[0] == '#' && tokenLen > 1) {
-            char name[SERVICE_TAG_VALUE_LEN];
-            size_t nameLen = tokenLen - 1;
-            if (nameLen >= sizeof(name)) {
-                nameLen = sizeof(name) - 1;
-            }
-            memcpy(name, cursor + 1, nameLen);
-            name[nameLen] = '\0';
-            if (!isReservedEntityHashtag(name) && entities && maxEntities > 0 && *outEntityCount < maxEntities) {
-                strncpy(entities[*outEntityCount], name, SERVICE_TAG_VALUE_LEN - 1);
-                entities[*outEntityCount][SERVICE_TAG_VALUE_LEN - 1] = '\0';
-                (*outEntityCount)++;
-            }
-        } else {
-            if (textOffset > 0 && textOffset + 1 < textLen) {
-                outText[textOffset++] = ' ';
-            }
-            const size_t copyLen = (tokenLen < textLen - textOffset - 1) ? tokenLen : (textLen - textOffset - 1);
-            if (copyLen > 0) {
-                memcpy(outText + textOffset, cursor, copyLen);
-                textOffset += copyLen;
-                outText[textOffset] = '\0';
-            }
-        }
-
+        tokens[tokenCount] = cursor;
+        tokenLens[tokenCount] = tokenLen;
+        tokenCount++;
         cursor = skipSpaces(tokenEnd);
+    }
+
+    size_t textTokenCount = tokenCount;
+    if (tokenCount > 0 && tokens[tokenCount - 1][0] == '#' && tokenLens[tokenCount - 1] > 1) {
+        char name[SERVICE_TAG_VALUE_LEN];
+        size_t nameLen = tokenLens[tokenCount - 1] - 1;
+        if (nameLen >= sizeof(name)) {
+            nameLen = sizeof(name) - 1;
+        }
+        memcpy(name, tokens[tokenCount - 1] + 1, nameLen);
+        name[nameLen] = '\0';
+        if (!isReservedEntityHashtag(name) && entities && maxEntities > 0) {
+            strncpy(entities[0], name, SERVICE_TAG_VALUE_LEN - 1);
+            entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
+            *outEntityCount = 1;
+            textTokenCount = tokenCount - 1;
+        }
+    }
+
+    size_t textOffset = 0;
+    for (size_t i = 0; i < textTokenCount; i++) {
+        if (textOffset > 0 && textOffset + 1 < textLen) {
+            outText[textOffset++] = ' ';
+        }
+        const size_t copyLen =
+            (tokenLens[i] < textLen - textOffset - 1) ? tokenLens[i] : (textLen - textOffset - 1);
+        if (copyLen > 0) {
+            memcpy(outText + textOffset, tokens[i], copyLen);
+            textOffset += copyLen;
+            outText[textOffset] = '\0';
+        }
     }
 
     return true;
@@ -1270,7 +1375,17 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::STOP;
     }
 
-    if (parseFinCommand(buf)) {
+    char finAffiliation[SERVICE_TAG_VALUE_LEN];
+    if (parseFinCommandWithAffiliation(buf, finAffiliation, sizeof(finAffiliation))) {
+        if (finAffiliation[0]) {
+            char entities[1][SERVICE_TAG_VALUE_LEN];
+            strncpy(entities[0], finAffiliation, SERVICE_TAG_VALUE_LEN - 1);
+            entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
+            if (!entityTagsMatchMembership(entities, 1)) {
+                LOG_DEBUG("GaulixPager: #fin ignore (appartenance %s)", finAffiliation);
+                return ProcessMessage::STOP;
+            }
+        }
         clearAlert(true);
         return ProcessMessage::STOP;
     }
@@ -1311,7 +1426,13 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         if (kind == PagerCommandKind::Info) {
             triggerInfo(alertBody, mp);
         } else {
-            triggerAlert(alertBody[0] ? alertBody : (kind == PagerCommandKind::Secours ? "Secours" : "Alerte secours"), mp);
+            const char *fallback = "Alerte secours";
+            if (kind == PagerCommandKind::Secours) {
+                fallback = "Secours";
+            } else if (kind == PagerCommandKind::Vigilance) {
+                fallback = "Vigilance";
+            }
+            triggerAlert(alertBody[0] ? alertBody : fallback, mp);
         }
         return ProcessMessage::STOP;
     }
@@ -1371,7 +1492,9 @@ int GaulixPagerModule::handleInputEvent(const InputEvent *event)
         return 0;
     }
 
-    if (event->inputEvent == INPUT_BROKER_SELECT || event->inputEvent == INPUT_BROKER_USER_PRESS) {
+    // Center click (short or long) / user button — ignore stick directions.
+    if (event->inputEvent == INPUT_BROKER_SELECT || event->inputEvent == INPUT_BROKER_SELECT_LONG ||
+        event->inputEvent == INPUT_BROKER_USER_PRESS) {
         acknowledgeAlert();
         return 1;
     }
@@ -1536,6 +1659,10 @@ void GaulixPagerModule::formatStatusLine(char *buf, size_t len, OLEDDisplay *dis
 
 void GaulixPagerModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *state, int16_t x, int16_t y)
 {
+    if (state) {
+        pagerFrameIndex = state->currentFrame;
+    }
+
     display->clear();
 
     display->setFont(FONT_SMALL);

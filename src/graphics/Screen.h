@@ -668,6 +668,7 @@ class Screen : public concurrency::OSThread
 
     uint8_t getCurrentFrameIndex() const { return ui ? ui->getUiState()->currentFrame : 255; }
     bool isNormalScreenActive() const { return showingNormalScreen; }
+    void noteScreenUserActivity();
 
   protected:
     /// Updates the UI.

@@ -174,11 +174,17 @@ int32_t TrackballInterruptBase::runOnce()
         e.inputEvent = this->_eventRight;
     }
 #else
-    if (this->action == TB_ACTION_PRESSED && !digitalRead(_pinPress) && !pressDetected) {
-        // Start long press detection
-        pressDetected = true;
-        pressStartTime = millis();
-        // Don't send event yet, wait to see if it's a long press
+    if (this->action == TB_ACTION_PRESSED && !pressDetected) {
+        if (!digitalRead(_pinPress)) {
+            // Still held: wait to distinguish short vs long press.
+            pressDetected = true;
+            pressStartTime = millis();
+        } else {
+            // Already released before the next poll — count as short press.
+            // (Common on quick taps; previously the click was dropped.)
+            e.inputEvent = this->_eventPressed;
+            this->action = TB_ACTION_NONE;
+        }
     } else if (this->action == TB_ACTION_UP && !digitalRead(_pinUp) && !directionDetected) {
         directionDetected = true;
         directionStartTime = millis();
@@ -224,8 +230,9 @@ int32_t TrackballInterruptBase::runOnce()
 
 void TrackballInterruptBase::intPressHandler()
 {
-    if (!Throttle::isWithinTimespanMs(lastInterruptTime, 10))
-        this->action = TB_ACTION_PRESSED;
+    // Do not share the direction-axis debounce: tilting while clicking often
+    // fires UP/DOWN/LEFT/RIGHT first and would swallow the center press.
+    this->action = TB_ACTION_PRESSED;
     lastInterruptTime = millis();
 }
 

@@ -1172,12 +1172,26 @@ int32_t Screen::runOnce()
     if (showingNormalScreen) {
         // standard screen loop handling here
 #if defined(GAULIX_PAGER)
-        // Gaulix pager must stay on operator-selected frames only.
-        // Ignore persisted auto carousel settings on this build.
-        const bool allowAutoCarousel = false;
+        // Gaulix pager: no auto-carousel; return to pager home after idle timeout.
+        constexpr uint32_t GAULIX_PAGER_IDLE_RETURN_MS = 60UL * 1000UL;
+        if (gaulixPagerModule && !GaulixPagerModule::isAlertActive() &&
+            NotificationRenderer::current_notification_type != notificationTypeEnum::text_input) {
+            const uint8_t pagerFrame = GaulixPagerModule::getPagerFrameIndex();
+            if (pagerFrame != 255 && ui->getUiState()->currentFrame != pagerFrame &&
+                ui->getUiState()->frameState == FIXED &&
+                !Throttle::isWithinTimespanMs(lastScreenTransition, GAULIX_PAGER_IDLE_RETURN_MS)) {
+#if defined(USE_EINK)
+                EINK_ADD_FRAMEFLAG(dispdev, DEMAND_FAST);
+                EINK_ADD_FRAMEFLAG(dispdev, BLOCKING);
+#endif
+                ui->switchToFrame(pagerFrame);
+                lastScreenTransition = millis();
+                setFastFramerate();
+                LOG_DEBUG("GaulixPager: retour ecran pager apres inactivite");
+            }
+        }
 #else
         const bool allowAutoCarousel = true;
-#endif
         if (allowAutoCarousel && config.display.auto_screen_carousel_secs > 0 &&
             NotificationRenderer::current_notification_type != notificationTypeEnum::text_input &&
             !Throttle::isWithinTimespanMs(lastScreenTransition, config.display.auto_screen_carousel_secs * 1000)) {
@@ -1191,6 +1205,7 @@ int32_t Screen::runOnce()
             LOG_DEBUG("LastScreenTransition exceeded %ums transition to next frame", (millis() - lastScreenTransition));
             handleOnPress();
         }
+#endif
     }
 
     // LOG_DEBUG("want fps %d, fixed=%d", targetFramerate,
@@ -1282,10 +1297,18 @@ void Screen::setFrames(FrameFocus focus)
         return;
     }
     // Pages node list / favoris / LoRa toujours masquees sur le Bipper Gaulix.
+#ifndef USE_EINK
     hiddenFrames.nodelist_nodes = true;
     hiddenFrames.nodelist_location = true;
+#endif
     hiddenFrames.show_favorites = true;
     hiddenFrames.lora = true;
+#ifdef USE_EINK
+    hiddenFrames.nodelist_bearings = true;
+    hiddenFrames.nodelist_hopsignal = true;
+    hiddenFrames.nodelist_lastheard = true;
+    hiddenFrames.nodelist_distance = true;
+#endif
 #endif
 
     uint8_t originalPosition = ui->getUiState()->currentFrame;
@@ -1769,10 +1792,18 @@ void Screen::loadFrameVisibility()
         if (ok) {
             applyHiddenFramesMask(data.mask);
 #if defined(GAULIX_PAGER)
+#ifndef USE_EINK
             hiddenFrames.nodelist_nodes = true;
             hiddenFrames.nodelist_location = true;
+#endif
             hiddenFrames.show_favorites = true;
             hiddenFrames.lora = true;
+#ifdef USE_EINK
+            hiddenFrames.nodelist_bearings = true;
+            hiddenFrames.nodelist_hopsignal = true;
+            hiddenFrames.nodelist_lastheard = true;
+            hiddenFrames.nodelist_distance = true;
+#endif
 #endif
             LOG_INFO("Loaded frame visibility (mask 0x%08x)", data.mask);
         } else {
@@ -1782,10 +1813,18 @@ void Screen::loadFrameVisibility()
     }
     spiLock->unlock();
 #if defined(GAULIX_PAGER)
+#ifndef USE_EINK
     hiddenFrames.nodelist_nodes = true;
     hiddenFrames.nodelist_location = true;
+#endif
     hiddenFrames.show_favorites = true;
     hiddenFrames.lora = true;
+#ifdef USE_EINK
+    hiddenFrames.nodelist_bearings = true;
+    hiddenFrames.nodelist_hopsignal = true;
+    hiddenFrames.nodelist_lastheard = true;
+    hiddenFrames.nodelist_distance = true;
+#endif
 #endif
     LOG_DEBUG("No saved frame visibility, using defaults");
 #endif
@@ -1892,6 +1931,11 @@ void Screen::handleOnPress()
         lastScreenTransition = millis();
         setFastFramerate();
     }
+}
+
+void Screen::noteScreenUserActivity()
+{
+    lastScreenTransition = millis();
 }
 
 #ifdef USERPREFS_UI_TEST_LOG
@@ -2062,11 +2106,25 @@ int Screen::handleInputEvent(const InputEvent *event)
 
 #if defined(GAULIX_PAGER)
     if (gaulixPagerModule && GaulixPagerModule::isAlertActive()) {
-        if (event->inputEvent == INPUT_BROKER_SELECT || event->inputEvent == INPUT_BROKER_USER_PRESS) {
+        if (event->inputEvent == INPUT_BROKER_SELECT || event->inputEvent == INPUT_BROKER_SELECT_LONG ||
+            event->inputEvent == INPUT_BROKER_USER_PRESS) {
             gaulixPagerModule->userAcknowledgeAlert();
             return 1;
         }
         return 0;
+    }
+    switch (event->inputEvent) {
+    case INPUT_BROKER_LEFT:
+    case INPUT_BROKER_RIGHT:
+    case INPUT_BROKER_UP:
+    case INPUT_BROKER_DOWN:
+    case INPUT_BROKER_SELECT:
+    case INPUT_BROKER_USER_PRESS:
+    case INPUT_BROKER_ALT_PRESS:
+        noteScreenUserActivity();
+        break;
+    default:
+        break;
     }
 #endif
 

@@ -33,8 +33,10 @@ L76K GPS Module Information : https://www.seeedstudio.com/L76K-GNSS-Module-for-S
 #define LED_POWER 48
 #define LED_STATE_ON 1 // State when LED is lit
 
+#ifndef GAULIX_PC_NODE
 #define BUTTON_PIN 21 // This is the Program Button
 #define BUTTON_NEED_PULLUP
+#endif
 
 #define BATTERY_PIN -1
 #define ADC_CHANNEL ADC_CHANNEL_0
@@ -45,6 +47,7 @@ L76K GPS Module Information : https://www.seeedstudio.com/L76K-GNSS-Module-for-S
     L76K Expansion Board can not directly used, L76K Reset Pin needs to override or physically remove it,
     otherwise it will conflict with the SPI pins
 */
+#ifndef GAULIX_PC_NODE
 #define GPS_L76K
 #ifdef GPS_L76K
 #define GPS_RX_PIN 44
@@ -58,6 +61,7 @@ L76K GPS Module Information : https://www.seeedstudio.com/L76K-GNSS-Module-for-S
 
 // XIAO S3 Expansion board  has 1.3 inch OLED Screen
 #define USCREEN_SSD1306
+#endif // !GAULIX_PC_NODE
 
 #define I2C_SDA 5
 #define I2C_SCL 6

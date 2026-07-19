@@ -13,6 +13,7 @@
 #define GAULIX_PAGER_VERSION "v1.10.0"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
+#define GAULIX_DEFAULT_SERVICE_TAG_T1 "all"
 
 // Buzzer tuning constants live in buzz.h (GAULIX_BUZZER_*).
 #include "buzz.h"
@@ -25,6 +26,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static uint32_t getAlertCount() { return alertCount; }
     static uint32_t getLastAlertTime() { return lastAlertTime; }
     static bool isAlertActive() { return alertActive; }
+    static uint8_t getPagerFrameIndex() { return pagerFrameIndex; }
     void userAcknowledgeAlert() { acknowledgeAlert(); }
 
     struct AlertHistoryEntry {
@@ -94,6 +96,8 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static uint32_t alertStartedMs;
     static uint32_t lastContinuousBeepMs;
 
+    static uint8_t pagerFrameIndex;
+
     static bool ledBlinkState;
 
     static AlertHistoryEntry alertHistory[ALERT_HISTORY_MAX];
@@ -104,12 +108,13 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
 
     static const char *skipSpaces(const char *msg);
     static bool parseFinCommand(const char *msg);
+    static bool parseFinCommandWithAffiliation(const char *msg, char *outAffiliation, size_t affiliationLen);
     static bool parseStatusCommand(const char *msg);
     static bool parseBeepCommand(const char *msg, uint8_t *outCount);
     static bool parseCodeCommand(const char *msg, char *oldCode, size_t oldLen, char *newCode, size_t newLen);
     static bool parseAlertWithText(const char *msg, const char *keyword, const char **outText);
     static bool parseInfoCommand(const char *msg, const char **outText);
-    enum class PagerCommandKind : uint8_t { Alerte = 0, Secours = 1, Info = 2 };
+    enum class PagerCommandKind : uint8_t { Alerte = 0, Secours = 1, Info = 2, Vigilance = 3 };
 
     static bool parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, char *outText, size_t textLen,
                                               char entities[][SERVICE_TAG_VALUE_LEN], size_t maxEntities,
@@ -140,6 +145,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     void loadConfig();
     bool saveConfig();
     void applyChannelMuteDefaults();
+    void ensureGaulixChannelsInstalled();
 
     void triggerAlert(const char *text, const meshtastic_MeshPacket &mp);
     void triggerInfo(const char *text, const meshtastic_MeshPacket &mp);

@@ -1138,10 +1138,23 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
     // Gaulix pager factory defaults: static UI and EU 868 MHz LoRa region.
     config.display.auto_screen_carousel_secs = 0;
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_LOCAL_ONLY;
     config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
+    config.position.gps_update_interval = 200;
+    config.bluetooth.fixed_pin = 123456;
+    config.bluetooth.mode = meshtastic_Config_BluetoothConfig_PairingMode_FIXED_PIN;
 #if defined(PIN_BUZZER)
     config.device.buzzer_gpio = PIN_BUZZER;
 #endif
+#endif
+
+#if defined(GAULIX_PC_NODE)
+    // Headless crisis-PC node: same band/channels as Bippers, full mesh participation.
+    config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_ALL;
+    config.bluetooth.fixed_pin = 123456;
+    config.bluetooth.mode = meshtastic_Config_BluetoothConfig_PairingMode_FIXED_PIN;
+    config.network.wifi_enabled = true;
 #endif
 
 #if defined(ARCH_ESP32) && !MESHTASTIC_EXCLUDE_WIFI
@@ -1907,7 +1920,11 @@ void NodeDB::installDefaultDeviceState()
     // Set default owner name
     pickNewNodeNum(); // based on macaddr now
 #ifdef USERPREFS_CONFIG_OWNER_LONG_NAME
+#if defined(GAULIX_PC_NODE)
+    snprintf(owner.long_name, sizeof(owner.long_name), "%s", "Gaulix PC Crise");
+#else
     snprintf(owner.long_name, sizeof(owner.long_name), (const char *)USERPREFS_CONFIG_OWNER_LONG_NAME);
+#endif
 #elif defined(GAULIX_PAGER)
     snprintf(owner.long_name, sizeof(owner.long_name), "%s", "Bipper de demo");
 #else
@@ -2389,8 +2406,8 @@ void NodeDB::loadFromDisk()
         config.lora.region = USERPREFS_CONFIG_LORA_REGION;
 #endif
 
-#if defined(GAULIX_PAGER)
-    // Re-apply on every boot so stale NVS cannot leave the pager on the wrong band.
+#if defined(GAULIX_PAGER) || defined(GAULIX_PC_NODE)
+    // Re-apply on every boot so stale NVS cannot leave Gaulix nodes on the wrong band.
     if (!configDecodeFailed)
         config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
     if (!configDecodeFailed) {
