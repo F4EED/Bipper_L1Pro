@@ -7,8 +7,8 @@
 | **Environnement PlatformIO** | `seeed_wio_tracker_L1` |
 | **Dépôt** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Base upstream** | [meshtastic/firmware](https://github.com/meshtastic/firmware) |
-| **État actuel** | **Gaulix Bipper v1.6** — pager secours opérationnel (alertes, son, acquittement, ACK, historique, alarme batterie) |
-| **Documents liés** | [Cahier des charges](cahier-des-charges-bip-alerte-gaulix.md) · [Roadmap phases](propositions-phases-bip-gaulix.md) |
+| **État actuel** | **Gaulix Bipper v1.10.0** — pager secours opérationnel (alertes multi-niveaux, appartenance T1–T4, son, acquittement, ACK, historique, alarme batterie) |
+| **Documents liés** | [Cahier des charges](cahier-des-charges-bip-alerte-gaulix.md) · [Roadmap phases](propositions-phases-bip-gaulix.md) · [Écosystème clients](ECOSYSTEME-GAULIX.md) |
 
 ---
 
@@ -16,13 +16,16 @@
 
 Ce fork transforme un **Seeed Wio Tracker L1 Pro** en terminal **pager d'alerte** pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
 
-L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.6** couvre la Phase 1 fonctionnelle : commandes `#alerte` / `#secours`, signal pim-pom continu, écran plein page, acquittement, ACK DM avec horodatage et GPS, tags de service T1–T4, historique des alertes, carrousel UI épuré, et alarme sonore batterie faible (10 %).
+L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.10.0** couvre la Phase 1 et une partie de la Phase 2 : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin`, filtre d'**appartenance** (`#entité` contrôlée contre T1–T4), signal pim-pom, écran plein page, acquittement, ACK DM avec horodatage et GPS, historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
 
-**Fonctionnalités implémentées (v1.6) :**
+Les coordinateurs envoient les commandes depuis le [client web](https://github.com/F4EED/client_web_MT_bipper) (`/alerts`) ou l'[app Android Gaulix_bipper](https://github.com/F4EED/bipper_android) — voir [Écosystème](ECOSYSTEME-GAULIX.md).
 
-- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) ;
+**Fonctionnalités implémentées (v1.10.0) :**
+
+- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) — `GAULIX_PAGER_VERSION "v1.10.0"` ;
 - module `GaulixPagerAlertListModule` (historique 20 alertes, défilement Haut/Bas) ;
-- commandes whitelist : `#alerte`, `#secours`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tag`, `#T1`…`#T4` ;
+- commandes whitelist : `#alerte`, `#secours`, `#vigilance`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tag`, `#T1`…`#T4` ;
+- format filaire : `#cmd <texte> [#appartenance]` — appartenance optionnelle filtrée contre les tags T1–T4 locaux ;
 - son **pim-pom** (2 tons, duty 80 %) en boucle jusqu'à acquittement ; 3 séquences pour `#info` ;
 - son **batterie faible** (10 %, duty 45 %, 1 bip) — répété toutes les 5 min, silencieux si charge USB ;
 - écran alerte **ALERTE SECOURS** + texte + horodatage `JJ/MM HH:MM` ;
@@ -51,7 +54,7 @@ L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahie
 3. L'opérateur entend le **pim-pom** en boucle, voit l'écran **ALERTE SECOURS** et acquitte (trackball).
 4. Un **ACK** DM est renvoyé à l'émetteur avec horodatage et position GPS (si GPS activé).
 
-### Comportement actuel (v1.6)
+### Comportement actuel (v1.10.0)
 
 | Composant | Comportement |
 |:----------|:-------------|
@@ -61,7 +64,7 @@ L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahie
 | **Son info** | `#info` / `#Info` : 3 séquences pim-pom, pas d'écran alerte. |
 | **Son batterie** | À **≤ 10 %** (hors charge USB) : 1 bip doux (2400 Hz, duty 45 %, 120 ms), puis rappel toutes les **5 min**. |
 | **Écran alerte** | Plein page bloqué : ALERTE SECOURS, texte, `JJ/MM HH:MM`, « Appui = acquitter ». |
-| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.6, batterie. |
+| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.10.0, batterie. |
 | **Historique alertes** | 2ᵉ frame carrousel : 20 dernières alertes (`#alerte`, `#secours`, `#T1`–`#T4`, `#info`), scroll Haut/Bas. |
 | **Carrousel UI** | Pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées (Gaulix uniquement). |
 | **Canaux** | Tous **muets** sauf **Alerte** (réappliqué à chaque boot). |
@@ -285,7 +288,7 @@ L'écran fonctionnel est désigné **Etat_bipper** : c'est l'écran d'accueil pa
 ┌─────────────────────────────┐
 │ Bipper de demo              │  ← L1 : nom long (ou « En écoute »)
 │ Nb AL. : 0 | Der. : --:--   │  ← L2 : compteur | dernière heure
-│      Bipper Gaulix v1.6     │  ← L3 : titre + version (centré)
+│   Bipper Gaulix v1.10.0     │  ← L3 : titre + version (centré)
 │ Batterie : 78 %             │  ← L4 : niveau batterie
 │ Trackball >                 │  ← hint historique alertes (frame 2)
 └─────────────────────────────┘
@@ -295,7 +298,7 @@ L'écran fonctionnel est désigné **Etat_bipper** : c'est l'écran d'accueil pa
 |:-----|:-------|
 | Ligne 1 | `owner.long_name` ; si absent → `En écoute` ; si trop large pour l'OLED → `Nom long : !!!trop long` |
 | Ligne 2 | `Nb AL. : N \| Der. : HH:MM` (ou `--:--`) |
-| Ligne 3 | `Bipper Gaulix v1.6` (`GAULIX_PAGER_TITLE`) |
+| Ligne 3 | `Bipper Gaulix v1.10.0` (`GAULIX_PAGER_TITLE`) |
 | Ligne 4 | Batterie %, `USB`, ou `--` |
 | Compteur | Remis à **zéro** à chaque allumage ; `#info` n'incrémente pas |
 | Frame 2 | Historique alertes (`GaulixPagerAlertListModule`) — scroll Haut/Bas |
@@ -388,23 +391,33 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 1. Allumer le bippeur et le configurer dans l'app Meshtastic (nom du nœud, etc.).
 2. Si l'appareil avait une config antérieure : effectuer un **factory reset** pour appliquer les canaux Gaulix.
 3. Vérifier dans l'app que les canaux `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech` et `Alerte` sont présents.
-4. L'écran d'accueil **Bipper Gaulix v1.6** s'affiche (frame pager dédiée).
+4. L'écran d'accueil **Bipper Gaulix v1.10.0** s'affiche (frame pager dédiée).
 
 ---
 
-## Commandes implémentées (v1.6)
+## Commandes implémentées (v1.10.0)
+
+Format général des alertes :
+
+```text
+#alerte|#secours|#vigilance|#info <texte libre> [#appartenance]
+#fin [#appartenance]
+```
 
 | Commande | Action | Exemple |
 |:---------|:-------|:--------|
-| `#alerte <texte>` | Alerte secours — tous les Bippers | `#alerte Rassemblement hall` |
-| `#secours <texte>` | Synonyme alerte — tous les Bippers | `#secours Renforts Nord` |
-| `#T1`…`#T4 <texte>` | Alerte si tag local correspond | `#T1 Intervention` |
-| `#tag <0-4>` | Tag service persistant (0 = aucun) | `#tag 1` |
-| `#Info` / `#info <texte>` | 3× pim-pom, log seulement, pas d'écran alerte | `#info Exercice terminé` |
-| `#fin` | Fin d'alerte à distance (2 bips fin) | `#fin` |
-| `#b <n>` | Enregistre le réglage en NVS *(n'affecte plus le son d'alerte)* | `#b 0` |
+| `#alerte <texte> [#app]` | Alerte secours | `#alerte Rassemblement hall` · `#alerte Feu #odm42` |
+| `#secours <texte> [#app]` | Synonyme / variante alerte | `#secours Renforts Nord` |
+| `#vigilance <texte> [#app]` | Niveau vigilance | `#vigilance Crue attendue #aasc` |
+| `#info <texte> [#app]` | 3× pim-pom, pas d'écran alerte plein page | `#info Exercice terminé` |
+| `#fin [#app]` | Fin d'alerte à distance (2 bips fin) | `#fin` · `#fin #odm42` |
+| `#T1`…`#T4 <texte>` | Alerte legacy si tag local correspond | `#T1 Intervention` |
+| `#tag …` | Définir les valeurs T1–T4 persistantes | via client web / app Android |
+| `#b <n>` | Nombre de bips config (NVS) | `#b 3` |
 | `#code <ancien> <nouveau>` | Code d'activation persistant | `#code GAULIX GAULIX26` |
 | `#status` | État du pager en DM | `#status` |
+
+**Appartenance :** seul le **dernier** jeton `#…` non réservé est l'appartenance. À la réception, le Bipper compare ce jeton à ses tags **T1–T4** ; s'il ne correspond à aucun, l'alerte est ignorée. Sans `#appartenance`, tous les Bippers concernés réagissent.
 
 > **Whitelist stricte** : tout autre texte (ex. `test`) est ignoré par `GaulixPagerModule` (pas d'alerte, pas de buzzer).
 
@@ -412,7 +425,7 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 
 | Événement | Son | Écran | ACK DM |
 |:----------|:----|:------|:-------|
-| `#alerte` / `#secours` / `#T1`…`#T4` | Pim-pom en boucle (1,5 s) | Plein page jusqu'à acquittement | Non |
+| `#alerte` / `#secours` / `#vigilance` / `#T1`…`#T4` | Pim-pom en boucle (1,5 s) | Plein page jusqu'à acquittement | Non |
 | Acquittement (trackball) | 1 bip fin | Retour accueil immédiat | `Pager ACK alerte JJ/MM HH:MM` (+ GPS Fr_Balise) |
 | `#fin` | 2 bips fin | Retour accueil | Non |
 | `#info` | 3× pim-pom puis silence | Inchangé | Non |
@@ -425,7 +438,7 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 
 Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md).
 
-### Phase 1 — Pager secours *(largement implémentée — v1.6)*
+### Phase 1 — Pager secours *(implémentée — v1.10.0)*
 
 | Fonction | Statut | Description |
 |:---------|:------:|:------------|
@@ -435,10 +448,11 @@ Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md)
 | Alarme batterie 10 % | ✅ | Bip doux (45 % duty), rappel 5 min, muet si USB |
 | Canaux Gaulix + muet sauf Alerte | ✅ | ch0–3 + ch7 ; mute réappliqué au boot |
 | EU868 forcé au boot | ✅ | `NodeDB` + `GaulixPagerModule` |
-| `#alerte` / `#secours` | ✅ | Alerte tous Bippers, pim-pom continu |
-| `#T1`…`#T4` + `#tag` | ✅ | Alertes par service |
+| `#alerte` / `#secours` / `#vigilance` | ✅ | Niveaux d'alerte + pim-pom |
+| Appartenance `#entité` vs T1–T4 | ✅ | Filtre à la réception (v1.10) |
+| `#T1`…`#T4` + `#tag` | ✅ | Alertes / tags de service |
 | `#Info` / `#info` | ✅ | 3× pim-pom, pas d'écran alerte |
-| `#fin` | ✅ | Fin d'alerte à distance |
+| `#fin` | ✅ | Fin d'alerte à distance (+ appartenance optionnelle) |
 | Son pim-pom continu | ✅ | Jusqu'à acquittement, `#fin` ou 30 min |
 | Écran plein page alerte | ✅ | ALERTE SECOURS + texte + horodatage |
 | LED clignotante | ✅ | PIN_LED1 pendant alerte |
@@ -448,16 +462,16 @@ Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md)
 | `#status` | ✅ | État pager en DM |
 | Timeout 30 min | ✅ | Coupure auto sans acquittement |
 | Messages prédéfinis Gaulix | ✅ | 40 messages CannedMessage |
-| `#b <n>` | ⚠️ | Enregistré en NVS ; **ne pilote plus** le son d'alerte |
-| Code obligatoire dans `#alerte` | ⏳ | Non requis actuellement (whitelist syntaxe) |
+| Clients coordinateurs | ✅ | Web `/alerts` + Android Gaulix_bipper |
+| `#b <n>` | ⚠️ | Enregistré en NVS |
+| Code obligatoire dans `#alerte` | ⏳ | Non requis (whitelist syntaxe) |
 | Fiche réflexe opérateur | ⏳ | PDF 1 page |
 
-### Phase 2 — Niveaux d'alerte *(partiellement couvert en v1.6)*
+### Phase 2 — Niveaux d'alerte *(partiellement couvert en v1.10)*
 
-- `#info` implémenté ; `#urgence` et niveaux visuels distincts : à venir
-- Messages prédéfinis (CannedMessage)
+- `#info` / `#vigilance` / `#alerte` / `#secours` + appartenance : ✅
+- `#urgence` et niveaux visuels distincts sur OLED : à venir
 - Liste blanche des coordinateurs
-- Journal local des 20 dernières alertes
 - Mode exercice vs réel
 
 ### Phase 3 — Réseau de crise *(V2)*
@@ -477,12 +491,12 @@ Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md)
 
 ## Tests et validation
 
-### Vérifications manuelles (v1.6)
+### Vérifications manuelles (v1.10.0)
 
 | Test | Résultat attendu |
 |:-----|:-----------------|
 | Build `seeed_wio_tracker_L1` | Compilation OK, UF2 dans `C:\pio-build\` |
-| Boot | Écran accueil : nom, `Nb AL. : 0`, `Bipper Gaulix v1.6` |
+| Boot | Écran accueil : nom, `Nb AL. : 0`, `Bipper Gaulix v1.10.0` |
 | Carrousel | Pas de pages Node, Bearings, LoRa, `*Node*` |
 | Batterie ≤ 10 % | 1 bip doux, rappel 5 min (silencieux si USB) |
 | `#info test` | 3× pim-pom, pas d'écran alerte |
@@ -528,6 +542,7 @@ firmware_meshtastic/
 
 | Version | Date | Auteur | Notes |
 |:--------|:-----|:-------|:------|
+| 1.4 | 20/07/2026 | Réseau Gaulix | Alignement **v1.10.0** : `#vigilance`, appartenance `#entité` vs T1–T4, liens clients web/Android |
 | 1.3 | 13/07/2026 | Réseau Gaulix | v1.6 : alarme batterie 10 %, historique alertes, carrousel épuré, `Nb AL.` / `Der.` |
 | 1.2 | 13/07/2026 | Réseau Gaulix | v1.4 : alertes, pim-pom, ACK GPS, écran 4 lignes, tags T1–T4 |
 | 1.1 | 06/07/2026 | Réseau Gaulix | Configuration usine complète (LoRa, canaux, rôle, BT, GPS) |

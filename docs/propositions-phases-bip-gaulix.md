@@ -21,7 +21,7 @@ projet: "Réseau Gaulix · Meshtastic"
 | | |
 |:--|:--|
 | **Document** | Roadmap fonctionnelle et technique |
-| **Version** | 0.1.0 — **Phase 1 implémentée (firmware v1.6)** |
+| **Version** | 0.1.0 — **Phase 1 + appartenance (firmware v1.10.0)** |
 | **Date** | 13/07/2026 |
 | **Matériel cible** | Seeed Wio Tracker L1 Pro |
 | **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`) |
@@ -55,19 +55,21 @@ Transformer un terminal **Meshtastic** en **pager d'alerte secours** pour le ré
 | Port `ALERT_APP` (protocole) | Canal dédié alertes critiques *(non implémenté en module firmware)* |
 | Priorité réseau | Les paquets critiques passent avant les messages courants |
 
-### Ce qui manquait — état juillet 2026 (v1.6)
+### Ce qui manquait — état juillet 2026 (v1.10.0)
 
-| Besoin initial | Statut v1.6 |
+| Besoin initial | Statut v1.10 |
 |:---------------|:------------|
 | Mode pager secours unifié | ✅ `GaulixPagerModule` |
-| Commandes `#alerte`, `#fin`, `#status`, etc. | ✅ Whitelist implémentée |
+| Commandes `#alerte`, `#fin`, `#status`, etc. | ✅ Whitelist + `#vigilance` |
+| Appartenance / ciblage T1–T4 | ✅ `#cmd texte #entité` |
 | Acquittement + ACK coordinateur | ✅ ACK DM + GPS Fr_Balise |
 | Écran d'accueil pager | ✅ 4 lignes (`Nb AL.` / `Der.`, version, batterie) |
 | Historique alertes local | ✅ `GaulixPagerAlertListModule` (20 entrées) |
 | Alarme batterie faible | ✅ Bip doux à 10 %, rappel 5 min |
 | Carrousel UI épuré | ✅ Node / Bearings / LoRa / favoris masqués |
+| Clients coordinateurs (web + Android) | ✅ forks Gaulix |
 | Code d'activation dans la syntaxe `#alerte` | ⏳ `#code` seul ; pas de code obligatoire dans `#alerte` |
-| `#urgence`, liste blanche, journal exportable | ⏳ Phase 2 |
+| `#urgence`, liste blanche coordinateurs | ⏳ suite Phase 2 |
 
 ---
 

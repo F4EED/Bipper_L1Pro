@@ -3,7 +3,7 @@ title: "Cahier des charges — Bip alerte Gaulix"
 version: "0.1.0"
 date: "13/07/2026"
 author: "Réseau Gaulix"
-status: "Implémenté — firmware v1.6 (Phase 1)"
+status: "Implémenté — firmware v1.10.0 (Phase 1 + appartenance)"
 ---
 
 <table>
@@ -21,8 +21,8 @@ status: "Implémenté — firmware v1.6 (Phase 1)"
 | | |
 |:--|:--|
 | **Document** | Cahier des charges Bip alerte — Réseau Gaulix |
-| **Version** | 0.1.0 (spec) / firmware **v1.6** |
-| **Date** | 13/07/2026 |
+| **Version** | 0.1.0 (spec) / firmware **v1.10.0** |
+| **Date** | 13/07/2026 (spec) · maj doc 20/07/2026 |
 
 </td>
 </tr>
