@@ -3,7 +3,7 @@ title: "Cahier des charges — Bip alerte Gaulix"
 version: "0.1.0"
 date: "13/07/2026"
 author: "Réseau Gaulix"
-status: "Implémenté — firmware v1.10.0 (Phase 1 + appartenance)"
+status: "Implémenté — firmware v1.11.0 (nº alerte, multi-entités T1–T10, multi-matériels)"
 ---
 
 <table>
@@ -21,8 +21,9 @@ status: "Implémenté — firmware v1.10.0 (Phase 1 + appartenance)"
 | | |
 |:--|:--|
 | **Document** | Cahier des charges Bip alerte — Réseau Gaulix |
-| **Version** | 0.1.0 (spec) / firmware **v1.10.0** |
-| **Date** | 13/07/2026 (spec) · maj doc 20/07/2026 |
+| **Version** | 0.1.0 (spec) / firmware **v1.11.0** |
+| **Date** | 13/07/2026 (spec) · maj doc 30/07/2026 |
+| **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 |
 
 </td>
 </tr>
@@ -46,11 +47,13 @@ L'objectif du présent cahier des charges est de définir la conception d'un **p
 
 ```
   Coordinateur                    Réseau LoRa Gaulix              Pager secours
-  (app Meshtastic)         ──────────────────────────►         (Seeed L1 Pro)
+  (web / Android + radio)  ──────────────────────────►         (L1 / M1 / M2)
         ▲                                                              │
         │                                                              │
-        └──────────────── ACK « alerte reçue » ────────────────────────┘
+        └──────────────── Pager ACK (+ GPS Fr_Balise) ─────────────────┘
 ```
+
+Le **PC de crise** (Seeed XIAO ESP32-S3 + Wio-SX1262, env `seeed-xiao-s3-gaulix`) sert de radio coordinateur sans écran.
 
 <br>
 
@@ -102,7 +105,7 @@ Afin d'assurer la conception d'un bippeur d'alerte employable dans le cadre du r
 
 ### Contraintes techniques et économiques
 
-- Première cible matérielle : **Seeed Wio Tracker L1 Pro**.
+- Première cible matérielle : **Seeed Wio Tracker L1 Pro** ; aussi **ThinkNode M1/M2** et PC crise **XIAO S3+SX1262**.
 - Livrable de flashage : fichier **`.uf2`** (bootloader nRF52).
 - Module logiciel dédié isolé du reste du firmware pour faciliter la maintenance.
 - Interface et messages en **français**, vocabulaire **secours / AASC / PCS**.
@@ -185,7 +188,8 @@ La solution reste **auto-hébergeable** au sens mesh : aucun abonnement, aucun s
 
 | Élément | Spécification |
 |:--------|:--------------|
-| Terminal | Seeed Wio Tracker L1 Pro |
+| Terminal pager | L1 Pro · ThinkNode M1 · ThinkNode M2 |
+| Radio PC crise | XIAO ESP32-S3 + Wio-SX1262 |
 | Processeur | nRF52840 |
 | Radio | SX1262 (LoRa) |
 | Affichage | OLED SSD1306 |

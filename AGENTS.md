@@ -20,14 +20,21 @@
 
 This repository is the [Meshtastic](https://meshtastic.org) firmware - a C++17 embedded codebase targeting ESP32 / nRF52 / RP2040 / STM32WL / Linux-Portduino LoRa mesh radios. The Python MCP server that AI agents use to flash, configure, and test connected devices now lives in its own repo, [meshtastic/meshtastic-mcp](https://github.com/meshtastic/meshtastic-mcp); this repo registers it via `.mcp.json` (run through `uvx`) so its tools are available automatically.
 
-## Gaulix Bipper (fork L1 Pro)
+## Gaulix Bipper (fork)
 
-Ce checkout est aussi le firmware **Gaulix Bipper**. Il évolue **toujours avec** :
+Ce checkout est le firmware **Gaulix Bipper** **v1.11.0**. Il évolue **toujours avec** :
 
 | Projet | Chemin local |
 |--------|--------------|
 | Client web | `C:\client web mesthastic_bipper` |
 | Client Android | `C:\bipper_android` |
+
+| Env PlatformIO | Rôle |
+|----------------|------|
+| `seeed_wio_tracker_L1` | Pager L1 Pro |
+| `thinknode_m1` | Pager ThinkNode M1 |
+| `thinknode_m2` | Pager ThinkNode M2 |
+| `seeed-xiao-s3-gaulix` | PC crise XIAO ESP32-S3 + Wio-SX1262 |
 
 Docs : `docs/ECOSYSTEME-GAULIX.md` · `docs/BIPPER1.md` · règle `.cursor/rules/gaulix-ecosystem-sync.mdc`.
 

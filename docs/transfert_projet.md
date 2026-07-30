@@ -1,4 +1,4 @@
-# Transfert du projet Gaulix Bipper L1 Pro vers un autre PC
+# Transfert du projet Gaulix Bipper vers un autre PC
 
 | | |
 |:--|:--|
@@ -6,10 +6,10 @@
 | **Dépôt local** | `C:\firmware_meshtastic` |
 | **Remote** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Branche de travail** | `develop` |
-| **Matériel cible** | Seeed Wio Tracker L1 Pro |
-| **Document lié** | [BIPPER1.md](BIPPER1.md) — vue d'ensemble du fork |
+| **Matériels** | L1 Pro · ThinkNode M1/M2 · XIAO S3+SX1262 (PC crise) |
+| **Document lié** | [BIPPER1.md](BIPPER1.md) · [ECOSYSTEME-GAULIX.md](ECOSYSTEME-GAULIX.md) |
 
-Ce guide décrit comment reprendre le développement et le flashage des Bippers sur une nouvelle machine Windows (32 Go RAM, NVMe, Cursor déjà installé).
+Ce guide décrit comment reprendre le développement et le flashage des Bippers / PC crise sur une nouvelle machine Windows (32 Go RAM, NVMe, Cursor déjà installé).
 
 ---
 
@@ -41,6 +41,9 @@ Ce guide décrit comment reprendre le développement et le flashage des Bippers 
 | `src/modules/GaulixPagerModule.cpp` / `.h` | Module UI pager Gaulix + alarme batterie 10 % |
 | `src/modules/GaulixPagerAlertListModule.cpp` / `.h` | Historique des 20 dernières alertes |
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Flag `-D GAULIX_PAGER=1` |
+| `variants/nrf52840/ELECROW-ThinkNode-M1/platformio.ini` | Flag `-D GAULIX_PAGER=1` (`thinknode_m1`) |
+| `variants/esp32s3/ELECROW-ThinkNode-M2/platformio.ini` | Flag `-D GAULIX_PAGER=1` (`thinknode_m2`) |
+| `variants/esp32s3/seeed_xiao_s3/platformio.ini` | Env `seeed-xiao-s3-gaulix` (`GAULIX_PC_NODE=1`) |
 | `platformio.ini` | `build_dir = C:/pio-build` (contournement chemins longs / verrous Windows) |
 | `src/buzz/buzz.cpp` | Sons Gaulix : pim-pom alerte + `playGaulixLowBatteryBeep()` |
 | `src/graphics/Screen.cpp` | Masquage pages Node / Bearings / LoRa / favoris (Gaulix) |
@@ -444,15 +447,13 @@ Copy-Item C:\pio-build\seeed_wio_tracker_L1\firmware.uf2 D:\
 
 ---
 
-*Dernière mise à jour : 13/07/2026 — Gaulix Bipper **v1.6** (branche `develop`).*
+*Dernière mise à jour : 30/07/2026 — Gaulix Bipper **v1.11.0** (branche `develop`).*
 
-### Nouveautés v1.6
+### Nouveautés v1.11 (résumé)
 
 | Fonction | Détail |
 |:---------|:-------|
-| Alarme batterie 10 % | Bip doux (duty 45 %, 120 ms), rappel toutes les 5 min, muet si USB/charge |
-| Écran accueil | Libellés `Nb AL. :` et `Der. :` (ligne 2) |
-| Carrousel masqué | Pages Node, Bearings, LoRa, favoris `*Node*` |
-| Historique alertes | `GaulixPagerAlertListModule` — 20 entrées, scroll Haut/Bas |
-| ACK acquittement | DM + broadcast position sur canal **Fr_Balise** |
-| Version module | `GAULIX_PAGER_VERSION` = `v1.6` |
+| Protocole | `#alerte [N] texte #E1 #E2` · `#fin N` · T1–T10 |
+| Pagers | L1 Pro · ThinkNode M1 · ThinkNode M2 |
+| PC crise | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`) |
+| Version module | `GAULIX_PAGER_VERSION` = `v1.11.0` |

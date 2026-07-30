@@ -21,10 +21,10 @@ projet: "Réseau Gaulix · Meshtastic"
 | | |
 |:--|:--|
 | **Document** | Roadmap fonctionnelle et technique |
-| **Version** | 0.1.0 — **Phase 1 + appartenance (firmware v1.10.0)** |
-| **Date** | 13/07/2026 |
-| **Matériel cible** | Seeed Wio Tracker L1 Pro |
-| **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`) |
+| **Version** | 0.1.0 — **Phase 1 livrée (firmware v1.11.0)** |
+| **Date** | 13/07/2026 · maj doc 30/07/2026 |
+| **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 |
+| **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`, `seeed-xiao-s3-gaulix`) |
 
 </td>
 </tr>
@@ -55,18 +55,21 @@ Transformer un terminal **Meshtastic** en **pager d'alerte secours** pour le ré
 | Port `ALERT_APP` (protocole) | Canal dédié alertes critiques *(non implémenté en module firmware)* |
 | Priorité réseau | Les paquets critiques passent avant les messages courants |
 
-### Ce qui manquait — état juillet 2026 (v1.10.0)
+### Ce qui manquait — état juillet 2026 (v1.11.0)
 
-| Besoin initial | Statut v1.10 |
+| Besoin initial | Statut v1.11 |
 |:---------------|:------------|
 | Mode pager secours unifié | ✅ `GaulixPagerModule` |
-| Commandes `#alerte`, `#fin`, `#status`, etc. | ✅ Whitelist + `#vigilance` |
-| Appartenance / ciblage T1–T4 | ✅ `#cmd texte #entité` |
+| Commandes `#alerte`, `#fin`, `#status`, etc. | ✅ Whitelist + `#vigilance` + nº |
+| Appartenance / ciblage **T1–T10** | ✅ multi `#entité` (OU) + `#tagset` |
 | Acquittement + ACK coordinateur | ✅ ACK DM + GPS Fr_Balise |
 | Écran d'accueil pager | ✅ 4 lignes (`Nb AL.` / `Der.`, version, batterie) |
+| Écran alerte L1–L6 | ✅ type/#N · texte · émetteur · date · confirmer |
 | Historique alertes local | ✅ `GaulixPagerAlertListModule` (20 entrées) |
 | Alarme batterie faible | ✅ Bip doux à 10 %, rappel 5 min |
 | Carrousel UI épuré | ✅ Node / Bearings / LoRa / favoris masqués |
+| Multi-matériels pager | ✅ L1 Pro · ThinkNode M1 · ThinkNode M2 |
+| Nœud PC crise | ✅ XIAO ESP32-S3 + Wio-SX1262 |
 | Clients coordinateurs (web + Android) | ✅ forks Gaulix |
 | Code d'activation dans la syntaxe `#alerte` | ⏳ `#code` seul ; pas de code obligatoire dans `#alerte` |
 | `#urgence`, liste blanche coordinateurs | ⏳ suite Phase 2 |
@@ -136,7 +139,7 @@ secours     d'alerte    de crise    mode crise
 
 ### Phase 1 — Pager secours Gaulix *(implémentée — v1.6)*
 
-**Objectif :** livrer un bippeur d'alerte opérationnel sur L1 Pro. **Statut : livré en firmware v1.6** (juillet 2026).
+**Objectif :** livrer un bippeur d'alerte opérationnel (L1 Pro et variantes pager). **Statut : livré en firmware v1.11.0** (juillet 2026).
 
 #### Déclenchement
 
@@ -269,21 +272,16 @@ secours     d'alerte    de crise    mode crise
 
 ---
 
-## Matériel — Seeed Wio Tracker L1 Pro
+## Matériels
 
-| Ressource | Broche / détail | Usage crise |
-|:----------|:----------------|:------------|
-| Buzzer | D12 (`PIN_BUZZER`) | Alarmes sonores |
-| LED alerte | PIN_LED1 | Clignotement alerte active |
-| LED bleue | PIN_LED2 | **Ne pas utiliser pour alerte** (conflit buzzer corrigé en v1.3) |
-| Trackball | TB_UP/DOWN/LEFT/RIGHT/PRESS | Navigation et acquittement |
-| Bouton Program | D13 | Acquittement alternatif |
-| Écran OLED | SSD1306 | Alertes plein écran |
-| GPS L76K | UART | Position dans l'ACK |
-| LoRa SX1262 | SPI | Réseau Gaulix |
+| Matériel | Env | Rôle |
+|:---------|:----|:-----|
+| Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` | Pager (référence OLED) |
+| Elecrow ThinkNode M1 | `thinknode_m1` | Pager e-ink |
+| Elecrow ThinkNode M2 | `thinknode_m2` | Pager OLED ESP32-S3 |
+| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | PC crise (sans écran) |
 
-**Compilation :** `python -m platformio run -e seeed_wio_tracker_L1`  
-**Flashage :** fichier `.uf2` via bootloader USB (double-clic reset)
+Builds : `pio run -e seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` · `seeed-xiao-s3-gaulix`.
 
 ---
 
@@ -291,12 +289,13 @@ secours     d'alerte    de crise    mode crise
 
 | Question | Recommandation |
 |:---------|:---------------|
-| Par où commencer ? | **Phase 1 livrée** — maintenance et Phase 2 |
-| Matériel ? | **Seeed Wio Tracker L1 Pro** |
+| Par où commencer ? | **Phase 1 livrée (v1.11)** — maintenance et Phase 2 |
+| Matériels pager ? | **L1 Pro · ThinkNode M1 · ThinkNode M2** |
+| Radio coordinateur ? | **XIAO ESP32-S3 + Wio-SX1262** (`seeed-xiao-s3-gaulix`) |
 | Réseau ? | **Gaulix**, presets Meshtastic EU868 standards |
-| Émission alertes ? | **App Meshtastic** (DM ou canal PCS) |
+| Émission alertes ? | **Client web** `/alerts` ou **app Android** Gaulix_bipper |
 | Code d'activation ? | `GAULIX` par défaut — modifiable via `#code` |
-| Premier livrable ? | Firmware `.uf2` v1.6 ✅ — fiche réflexe ⏳ |
+| Premier livrable ? | Firmware v1.11.0 ✅ — fiche réflexe ⏳ |
 
 ---
 

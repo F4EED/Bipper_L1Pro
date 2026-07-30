@@ -25,6 +25,7 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran, sans GPS UI) — clients web/Android en USB / Wi-Fi / BLE |
 
 Build : `pio run -e seeed-xiao-s3-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **ALL** + Wi-Fi activé.
+
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
 ## Versions alignées (juillet 2026)
@@ -84,6 +85,7 @@ Config appartenance locale :
 
 ```
   Coordinateur (web /alerts ou app Android)
+            │  via PC crise XIAO ou autre nœud
             │  #alerte N texte #E1 #E2
             ▼
      Canal Alerte / DM  ──LoRa Gaulix──►  Bipper (L1 / ThinkNode M1 / M2)
