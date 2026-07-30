@@ -39,13 +39,14 @@ Ordre typique :
 - Slots d’appartenance : **T1–T10** (`#tagset` / `#tagval`)
 - SOS waypoint → canal **Fr_Balise** (prévu)
 
-## Matériels pager (`GAULIX_PAGER=1`)
+## Matériels Gaulix
 
-| Matériel | Env PlatformIO |
-|:---------|:---------------|
-| Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` |
-| Elecrow ThinkNode M1 | `thinknode_m1` |
-| Elecrow ThinkNode M2 | `thinknode_m2` |
+| Matériel | Env PlatformIO | Macro |
+|:---------|:---------------|:------|
+| Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` | `GAULIX_PAGER` |
+| Elecrow ThinkNode M1 | `thinknode_m1` | `GAULIX_PAGER` |
+| Elecrow ThinkNode M2 | `thinknode_m2` | `GAULIX_PAGER` |
+| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | `GAULIX_PC_NODE` (PC crise, sans écran) |
 
 Ne pas diverger web/Android sans mettre à jour le firmware (et inversement).
 

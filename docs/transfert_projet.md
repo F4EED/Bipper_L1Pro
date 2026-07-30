@@ -210,6 +210,7 @@ Le fichier `.vscode/tasks.json` local (s'il existe) peut contenir des tâches de
 | `seeed_wio_tracker_L1` | OLED | **Oui** (`GAULIX_PAGER=1`) |
 | `thinknode_m1` | E-ink 1.54\" (Elecrow) | **Oui** (`GAULIX_PAGER=1`) |
 | `thinknode_m2` | OLED SH1106 (Elecrow ESP32-S3) | **Oui** (`GAULIX_PAGER=1`) |
+| `seeed-xiao-s3-gaulix` | aucun (XIAO S3 + Wio-SX1262) | **PC crise** (`GAULIX_PC_NODE=1`) |
 | `seeed_wio_tracker_L1_eink` | E-ink | **Non** (pas encore activé) |
 | `thinknode_m1-inkhud` | InkHUD | **Non** (UI incompatible) |
 

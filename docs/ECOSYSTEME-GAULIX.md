@@ -18,6 +18,13 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 
 > Variante `thinknode_m1-inkhud` : **pas** de mode Gaulix (UI InkHUD incompatible avec les frames pager).
 
+## Nœud PC de crise (`GAULIX_PC_NODE=1`)
+
+| Matériel | Env PlatformIO | Rôle |
+|:---------|:---------------|:-----|
+| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran, sans GPS UI) — clients web/Android en USB / Wi-Fi / BLE |
+
+Build : `pio run -e seeed-xiao-s3-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **ALL** + Wi-Fi activé.
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
 ## Versions alignées (juillet 2026)
@@ -96,6 +103,7 @@ Config appartenance locale :
 |:-----|:---------|:----|:--------|
 | Nº alerte + multi-tags + T1–T10 + écran L1–L6 | ✅ v1.11 | ✅ aligné | ✅ aligné |
 | ThinkNode M1 / M2 (`GAULIX_PAGER`) | ✅ | ✅ détection HW | ✅ détection HW |
+| XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 | Page / écran Signaler POI | — | ⏳ | ⏳ |
 

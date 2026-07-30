@@ -3,8 +3,8 @@
 | | |
 |:--|:--|
 | **Projet** | Pager d'alerte secours — Réseau Gaulix |
-| **Matériels cibles** | Seeed Wio Tracker L1 Pro · Elecrow ThinkNode M1 · Elecrow ThinkNode M2 |
-| **Environnements PlatformIO** | `seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` |
+| **Matériels cibles** | Seeed Wio Tracker L1 Pro · Elecrow ThinkNode M1 · Elecrow ThinkNode M2 · Seeed XIAO ESP32-S3 + Wio-SX1262 (PC crise) |
+| **Environnements PlatformIO** | `seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` · `seeed-xiao-s3-gaulix` |
 | **Dépôt** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Base upstream** | [meshtastic/firmware](https://github.com/meshtastic/firmware) |
 | **État actuel** | **Gaulix Bipper v1.11.0** — nº d’alerte, multi-entités, T1–T10, écran alerte L1–L6, son, acquittement, ACK, historique, alarme batterie |
@@ -14,7 +14,7 @@
 
 ## Vue d'ensemble
 
-Ce fork transforme un **Seeed Wio Tracker L1 Pro**, un **Elecrow ThinkNode M1** (e-ink) ou un **ThinkNode M2** (OLED ESP32-S3) en terminal **pager d'alerte** pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
+Ce fork transforme un **Seeed Wio Tracker L1 Pro**, un **Elecrow ThinkNode M1** (e-ink) ou un **ThinkNode M2** (OLED ESP32-S3) en terminal **pager d'alerte**, et un kit **Seeed XIAO ESP32-S3 + Wio-SX1262** en nœud **PC de crise** (sans écran), pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
 
 L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.11.0** couvre : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin` avec **numéro d’alerte** optionnel et **multi-appartenances** (`#entité…` contrôlées contre **T1–T10**), signal pim-pom, écran plein page **L1–L6**, acquittement, ACK DM avec horodatage et GPS (Fr_Balise), historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
 
@@ -58,7 +58,7 @@ Les coordinateurs envoient les commandes depuis le [client web](https://github.c
 
 | Composant | Comportement |
 |:----------|:-------------|
-| **Compilation** | `-D GAULIX_PAGER=1` sur `seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`. |
+| **Compilation** | `-D GAULIX_PAGER=1` sur `seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`. `-D GAULIX_PC_NODE=1` sur `seeed-xiao-s3-gaulix`. |
 | **GaulixPagerModule** | `SinglePortModule` promiscuous ; traite les commandes avant `TextMessageModule`. |
 | **Son alerte** | Séquence **pim-pom** (3100 Hz / 2400 Hz, duty 80 %, 220 ms) répétée toutes les 1,5 s jusqu'à acquittement, `#fin` ou timeout 30 min. |
 | **Son info** | `#info` / `#Info` : 3 séquences pim-pom, pas d'écran alerte. |
@@ -81,13 +81,14 @@ build_flags = ...
   -D GAULIX_PAGER=1
 ```
 
-| Env | Variante |
-|:----|:---------|
-| `seeed_wio_tracker_L1` | `variants/nrf52840/seeed_wio_tracker_L1/` |
-| `thinknode_m1` | `variants/nrf52840/ELECROW-ThinkNode-M1/` |
-| `thinknode_m2` | `variants/esp32s3/ELECROW-ThinkNode-M2/` |
+| Env | Variante | Macro |
+|:----|:---------|:------|
+| `seeed_wio_tracker_L1` | `variants/nrf52840/seeed_wio_tracker_L1/` | `GAULIX_PAGER` |
+| `thinknode_m1` | `variants/nrf52840/ELECROW-ThinkNode-M1/` | `GAULIX_PAGER` |
+| `thinknode_m2` | `variants/esp32s3/ELECROW-ThinkNode-M2/` | `GAULIX_PAGER` |
+| `seeed-xiao-s3-gaulix` | `variants/esp32s3/seeed_xiao_s3/` | `GAULIX_PC_NODE` (tête de réseau, **pas** de pager UI) |
 
-Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` pour ne pas impacter les autres cartes (ni `thinknode_m1-inkhud`).
+Tout le code pager est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` pour ne pas impacter les autres cartes (ni `thinknode_m1-inkhud`, ni le XIAO PC crise).
 
 ---
 
@@ -113,6 +114,7 @@ Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` po
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1`. |
 | `variants/nrf52840/ELECROW-ThinkNode-M1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1` (env `thinknode_m1`). |
 | `variants/esp32s3/ELECROW-ThinkNode-M2/platformio.ini` | Ajout de `-D GAULIX_PAGER=1` (env `thinknode_m2`). |
+| `variants/esp32s3/seeed_xiao_s3/platformio.ini` | Env `seeed-xiao-s3-gaulix` : `-D GAULIX_PC_NODE=1` (XIAO S3 + Wio-SX1262). |
 | `src/modules/Modules.cpp` | Enregistrement `GaulixPagerModule` + `GaulixPagerAlertListModule`. |
 | `src/mesh/NodeDB.cpp` | EU868 forcé ; nom long usine `Bipper de demo`. |
 | `src/graphics/Screen.cpp` | Masquage carrousel (Node, Bearings, LoRa, favoris) ; blocage pendant alerte. |
@@ -370,6 +372,7 @@ cd firmware_meshtastic
 pio run -e seeed_wio_tracker_L1
 pio run -e thinknode_m1
 pio run -e thinknode_m2
+pio run -e seeed-xiao-s3-gaulix
 ```
 
 | Sortie | Chemin |
