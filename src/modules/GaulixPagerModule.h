@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.10.0"
+#define GAULIX_PAGER_VERSION "v1.11.0"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 #define GAULIX_DEFAULT_SERVICE_TAG_T1 "all"
@@ -58,9 +58,10 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
 
     static constexpr uint8_t DEFAULT_BEEP_COUNT = 3;
     static constexpr uint8_t INFO_PIM_POM_COUNT = 3;
+    static constexpr uint8_t SERVICE_TAG_SLOT_COUNT = 10;
     static constexpr size_t SERVICE_TAG_VALUE_LEN = 24;
-    static constexpr size_t SERVICE_TAG_LINE_LEN = 128;
-    static constexpr size_t MAX_ALERT_ENTITIES = 8;
+    static constexpr size_t SERVICE_TAG_LINE_LEN = 256;
+    static constexpr size_t MAX_ALERT_ENTITIES = 10;
     static constexpr uint32_t LED_BLINK_MS = 300;
     static constexpr uint32_t ALERT_MAX_DURATION_MS = 30UL * 60UL * 1000UL;
     static constexpr uint32_t CONTINUOUS_BEEP_INTERVAL_MS = GAULIX_CONTINUOUS_BEEP_INTERVAL_MS;
@@ -86,13 +87,15 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static uint32_t lastAlertTime;
     static bool alertActive;
     static char alertText[96];
+    static char alertEmitterName[40];
+    static uint32_t activeAlertId; // 0 = aucun numéro
     static NodeNum alertSourceNode;
     static uint8_t alertSourceChannel;
     static meshtastic_MeshPacket alertSourcePacket;
     static bool hasAlertSourcePacket;
     static char activationCode[32];
     static uint8_t configuredBeepCount;
-    static char configuredServiceTagValues[4][SERVICE_TAG_VALUE_LEN];
+    static char configuredServiceTagValues[SERVICE_TAG_SLOT_COUNT][SERVICE_TAG_VALUE_LEN];
     static uint32_t alertStartedMs;
     static uint32_t lastContinuousBeepMs;
 
@@ -106,18 +109,20 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static size_t alertHistoryScrollIndex;
     static size_t currentAlertHistoryPhysIdx;
 
+    enum class PagerCommandKind : uint8_t { Alerte = 0, Secours = 1, Info = 2, Vigilance = 3 };
+    static PagerCommandKind activeAlertKind;
+
     static const char *skipSpaces(const char *msg);
     static bool parseFinCommand(const char *msg);
-    static bool parseFinCommandWithAffiliation(const char *msg, char *outAffiliation, size_t affiliationLen);
+    static bool parseFinCommandEx(const char *msg, uint32_t *outAlertId, char *outAffiliation, size_t affiliationLen);
     static bool parseStatusCommand(const char *msg);
     static bool parseBeepCommand(const char *msg, uint8_t *outCount);
     static bool parseCodeCommand(const char *msg, char *oldCode, size_t oldLen, char *newCode, size_t newLen);
     static bool parseAlertWithText(const char *msg, const char *keyword, const char **outText);
     static bool parseInfoCommand(const char *msg, const char **outText);
-    enum class PagerCommandKind : uint8_t { Alerte = 0, Secours = 1, Info = 2, Vigilance = 3 };
 
-    static bool parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, char *outText, size_t textLen,
-                                              char entities[][SERVICE_TAG_VALUE_LEN], size_t maxEntities,
+    static bool parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, uint32_t *outAlertId, char *outText,
+                                              size_t textLen, char entities[][SERVICE_TAG_VALUE_LEN], size_t maxEntities,
                                               size_t *outEntityCount);
     static bool isReservedEntityHashtag(const char *name);
     static bool entityTagsMatchMembership(const char entities[][SERVICE_TAG_VALUE_LEN], size_t entityCount);
@@ -126,10 +131,12 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool parseServiceTagAlert(const char *msg, uint8_t *outTag, char *outValidator, size_t validatorLen,
                                      const char **outText);
     static bool isInvalidServiceTagAlert(const char *msg);
-    /** True if entity name matches any configured membership slot T1–T4. */
+    /** True if entity name matches any configured membership slot T1–T10. */
     static bool serviceTagMatches(const char *entity);
     static void setServiceTagValue(uint8_t tag, const char *value);
     static const char *getServiceTagValue(uint8_t tag);
+    static const char *pagerKindLabel(PagerCommandKind kind);
+    static void formatEmitterName(NodeNum from, char *buf, size_t len);
 
     static bool isAcceptedPacket(const meshtastic_MeshPacket &mp);
     static bool isLocalConfigCommand(const char *msg);
@@ -147,7 +154,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     void applyChannelMuteDefaults();
     void ensureGaulixChannelsInstalled();
 
-    void triggerAlert(const char *text, const meshtastic_MeshPacket &mp);
+    void triggerAlert(const char *text, const meshtastic_MeshPacket &mp, PagerCommandKind kind, uint32_t alertId);
     void triggerInfo(const char *text, const meshtastic_MeshPacket &mp);
     void acknowledgeAlert();
     void clearAlert(bool playFinMelody);

@@ -75,13 +75,17 @@ uint32_t GaulixPagerModule::alertCount = 0;
 uint32_t GaulixPagerModule::lastAlertTime = 0;
 bool GaulixPagerModule::alertActive = false;
 char GaulixPagerModule::alertText[96] = {};
+char GaulixPagerModule::alertEmitterName[40] = {};
+uint32_t GaulixPagerModule::activeAlertId = 0;
+GaulixPagerModule::PagerCommandKind GaulixPagerModule::activeAlertKind = GaulixPagerModule::PagerCommandKind::Alerte;
 NodeNum GaulixPagerModule::alertSourceNode = 0;
 uint8_t GaulixPagerModule::alertSourceChannel = 0;
 meshtastic_MeshPacket GaulixPagerModule::alertSourcePacket = meshtastic_MeshPacket_init_zero;
 bool GaulixPagerModule::hasAlertSourcePacket = false;
 char GaulixPagerModule::activationCode[32] = GAULIX_DEFAULT_ACTIVATION_CODE;
 uint8_t GaulixPagerModule::configuredBeepCount = GaulixPagerModule::DEFAULT_BEEP_COUNT;
-char GaulixPagerModule::configuredServiceTagValues[4][GaulixPagerModule::SERVICE_TAG_VALUE_LEN] = {};
+char GaulixPagerModule::configuredServiceTagValues[GaulixPagerModule::SERVICE_TAG_SLOT_COUNT]
+                                                  [GaulixPagerModule::SERVICE_TAG_VALUE_LEN] = {};
 uint32_t GaulixPagerModule::alertStartedMs = 0;
 uint32_t GaulixPagerModule::lastContinuousBeepMs = 0;
 uint32_t GaulixPagerModule::lastLowBatteryBeepMs = 0;
@@ -213,7 +217,7 @@ void GaulixPagerModule::loadConfig()
     }
 
     if (firstTagLine.equals(GAULIX_PAGER_CONFIG_TAGS_MARKER)) {
-        for (uint8_t tag = 1; tag <= 4 && file.available(); tag++) {
+        for (uint8_t tag = 1; tag <= SERVICE_TAG_SLOT_COUNT && file.available(); tag++) {
             String valueLine = file.readStringUntil('\n');
             valueLine.trim();
             setServiceTagValue(tag, valueLine.c_str());
@@ -222,9 +226,9 @@ void GaulixPagerModule::loadConfig()
         return;
     }
 
-    // v1.9 sans marqueur TAGS : première ligne = T1
+    // v1.9 sans marqueur TAGS : première ligne = T1 (jusqu'à 4 ou 10 lignes)
     setServiceTagValue(1, firstTagLine.c_str());
-    for (uint8_t tag = 2; tag <= 4 && file.available(); tag++) {
+    for (uint8_t tag = 2; tag <= SERVICE_TAG_SLOT_COUNT && file.available(); tag++) {
         String valueLine = file.readStringUntil('\n');
         valueLine.trim();
         setServiceTagValue(tag, valueLine.c_str());
@@ -247,7 +251,7 @@ bool GaulixPagerModule::saveConfig()
         return false;
     }
     file.write(reinterpret_cast<const uint8_t *>(buf), len);
-    for (uint8_t tag = 1; tag <= 4; tag++) {
+    for (uint8_t tag = 1; tag <= SERVICE_TAG_SLOT_COUNT; tag++) {
         len = snprintf(buf, sizeof(buf), "%s\n", getServiceTagValue(tag));
         if (len <= 0 || static_cast<size_t>(len) >= sizeof(buf)) {
             return false;
@@ -506,12 +510,16 @@ const char *GaulixPagerModule::skipSpaces(const char *msg)
 
 bool GaulixPagerModule::parseFinCommand(const char *msg)
 {
+    uint32_t alertId = 0;
     char affiliation[SERVICE_TAG_VALUE_LEN];
-    return parseFinCommandWithAffiliation(msg, affiliation, sizeof(affiliation));
+    return parseFinCommandEx(msg, &alertId, affiliation, sizeof(affiliation));
 }
 
-bool GaulixPagerModule::parseFinCommandWithAffiliation(const char *msg, char *outAffiliation, size_t affiliationLen)
+bool GaulixPagerModule::parseFinCommandEx(const char *msg, uint32_t *outAlertId, char *outAffiliation, size_t affiliationLen)
 {
+    if (outAlertId) {
+        *outAlertId = 0;
+    }
     if (outAffiliation && affiliationLen > 0) {
         outAffiliation[0] = '\0';
     }
@@ -522,38 +530,55 @@ bool GaulixPagerModule::parseFinCommandWithAffiliation(const char *msg, char *ou
     }
 
     const char *cursor = skipSpaces(msg + 4);
-    // Format: #fin [#appartenance] — ignore optional free text before trailing #tag.
-    const char *lastHash = nullptr;
+    // Format: #fin [N] [#entité…] — N optionnel, tags d'appartenance optionnels.
+    bool sawId = false;
     while (cursor && cursor[0]) {
-        if (cursor[0] == '#') {
-            lastHash = cursor;
-        }
         const char *tokenEnd = cursor;
         while (tokenEnd[0] && !std::isspace(static_cast<unsigned char>(tokenEnd[0]))) {
             tokenEnd++;
         }
-        cursor = skipSpaces(tokenEnd);
-    }
-
-    if (lastHash && outAffiliation && affiliationLen > 1) {
-        const char *name = lastHash + 1;
-        size_t nameLen = 0;
-        while (name[nameLen] && !std::isspace(static_cast<unsigned char>(name[nameLen])) &&
-               nameLen < affiliationLen - 1) {
-            nameLen++;
+        const size_t tokenLen = static_cast<size_t>(tokenEnd - cursor);
+        if (tokenLen == 0) {
+            break;
         }
-        if (nameLen > 0) {
+
+        if (!sawId && cursor[0] != '#') {
+            bool allDigits = true;
+            for (size_t i = 0; i < tokenLen; i++) {
+                if (!std::isdigit(static_cast<unsigned char>(cursor[i]))) {
+                    allDigits = false;
+                    break;
+                }
+            }
+            if (allDigits) {
+                char numBuf[16];
+                size_t copyLen = tokenLen < sizeof(numBuf) - 1 ? tokenLen : sizeof(numBuf) - 1;
+                memcpy(numBuf, cursor, copyLen);
+                numBuf[copyLen] = '\0';
+                if (outAlertId) {
+                    *outAlertId = static_cast<uint32_t>(strtoul(numBuf, nullptr, 10));
+                }
+                sawId = true;
+                cursor = skipSpaces(tokenEnd);
+                continue;
+            }
+        }
+
+        if (cursor[0] == '#' && tokenLen > 1 && outAffiliation && affiliationLen > 1 && !outAffiliation[0]) {
             char tmp[SERVICE_TAG_VALUE_LEN];
+            size_t nameLen = tokenLen - 1;
             if (nameLen >= sizeof(tmp)) {
                 nameLen = sizeof(tmp) - 1;
             }
-            memcpy(tmp, name, nameLen);
+            memcpy(tmp, cursor + 1, nameLen);
             tmp[nameLen] = '\0';
             if (!isReservedEntityHashtag(tmp)) {
                 strncpy(outAffiliation, tmp, affiliationLen - 1);
                 outAffiliation[affiliationLen - 1] = '\0';
             }
         }
+
+        cursor = skipSpaces(tokenEnd);
     }
     return true;
 }
@@ -669,7 +694,7 @@ bool GaulixPagerModule::parseInfoCommand(const char *msg, const char **outText)
 
 void GaulixPagerModule::setServiceTagValue(uint8_t tag, const char *value)
 {
-    if (tag < 1 || tag > 4) {
+    if (tag < 1 || tag > SERVICE_TAG_SLOT_COUNT) {
         return;
     }
     char *dest = configuredServiceTagValues[tag - 1];
@@ -683,10 +708,45 @@ void GaulixPagerModule::setServiceTagValue(uint8_t tag, const char *value)
 
 const char *GaulixPagerModule::getServiceTagValue(uint8_t tag)
 {
-    if (tag < 1 || tag > 4) {
+    if (tag < 1 || tag > SERVICE_TAG_SLOT_COUNT) {
         return "";
     }
     return configuredServiceTagValues[tag - 1];
+}
+
+const char *GaulixPagerModule::pagerKindLabel(PagerCommandKind kind)
+{
+    switch (kind) {
+    case PagerCommandKind::Secours:
+        return "SECOURS";
+    case PagerCommandKind::Vigilance:
+        return "VIGILANCE";
+    case PagerCommandKind::Info:
+        return "INFO";
+    case PagerCommandKind::Alerte:
+    default:
+        return "ALERTE";
+    }
+}
+
+void GaulixPagerModule::formatEmitterName(NodeNum from, char *buf, size_t len)
+{
+    if (!buf || len == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    meshtastic_NodeInfoLite *node = nodeDB ? nodeDB->getMeshNode(from) : nullptr;
+    if (node && node->long_name[0]) {
+        strncpy(buf, node->long_name, len - 1);
+        buf[len - 1] = '\0';
+        return;
+    }
+    if (node && node->short_name[0]) {
+        strncpy(buf, node->short_name, len - 1);
+        buf[len - 1] = '\0';
+        return;
+    }
+    snprintf(buf, len, "!%08x", static_cast<unsigned int>(from));
 }
 
 bool GaulixPagerModule::parseTagValueSetCommand(const char *msg, uint8_t *outTag, char *outValue, size_t valueLen)
@@ -704,7 +764,7 @@ bool GaulixPagerModule::parseTagValueSetCommand(const char *msg, uint8_t *outTag
 
     char *end = nullptr;
     const long tagNum = strtol(arg, &end, 10);
-    if (end == arg || tagNum < 1 || tagNum > 4) {
+    if (end == arg || tagNum < 1 || tagNum > SERVICE_TAG_SLOT_COUNT) {
         return false;
     }
 
@@ -743,12 +803,17 @@ bool GaulixPagerModule::parseTagSetBulkCommand(const char *msg, bool applyChange
             cursor++;
             continue;
         }
-        if ((cursor[0] != 'T' && cursor[0] != 't') || cursor[1] < '1' || cursor[1] > '4' || cursor[2] != '=') {
+        if (cursor[0] != 'T' && cursor[0] != 't') {
+            return false;
+        }
+        char *endNum = nullptr;
+        const long tagNum = strtol(cursor + 1, &endNum, 10);
+        if (endNum == cursor + 1 || tagNum < 1 || tagNum > SERVICE_TAG_SLOT_COUNT || *endNum != '=') {
             return false;
         }
 
-        const uint8_t tag = static_cast<uint8_t>(cursor[1] - '0');
-        const char *valueStart = cursor + 3;
+        const uint8_t tag = static_cast<uint8_t>(tagNum);
+        const char *valueStart = endNum + 1;
         const char *valueEnd = valueStart;
         while (valueEnd[0] && valueEnd[0] != ',') {
             valueEnd++;
@@ -790,15 +855,16 @@ bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, c
         return false;
     }
 
-    if (msg[2] < '1' || msg[2] > '4') {
+    char *end = nullptr;
+    const long tagNum = strtol(msg + 2, &end, 10);
+    if (end == msg + 2 || tagNum < 1 || tagNum > SERVICE_TAG_SLOT_COUNT) {
+        return false;
+    }
+    if (*end != '\0' && !std::isspace(static_cast<unsigned char>(*end))) {
         return false;
     }
 
-    if (msg[3] != '\0' && !std::isspace(static_cast<unsigned char>(msg[3]))) {
-        return false;
-    }
-
-    const char *rest = skipSpaces(msg + 3);
+    const char *rest = skipSpaces(end);
     if (!rest || !rest[0]) {
         return false;
     }
@@ -820,7 +886,7 @@ bool GaulixPagerModule::parseServiceTagAlert(const char *msg, uint8_t *outTag, c
     }
 
     if (outTag) {
-        *outTag = static_cast<uint8_t>(msg[2] - '0');
+        *outTag = static_cast<uint8_t>(tagNum);
     }
     if (outValidator && validatorLen > 0) {
         strncpy(outValidator, validator, validatorLen - 1);
@@ -837,7 +903,7 @@ bool GaulixPagerModule::serviceTagMatches(const char *entity)
     if (!entity || !entity[0]) {
         return false;
     }
-    for (uint8_t tag = 1; tag <= 4; tag++) {
+    for (uint8_t tag = 1; tag <= SERVICE_TAG_SLOT_COUNT; tag++) {
         const char *configured = getServiceTagValue(tag);
         if (!configured[0]) {
             continue;
@@ -857,8 +923,9 @@ bool GaulixPagerModule::isReservedEntityHashtag(const char *name)
     if (!name || !name[0]) {
         return true;
     }
-    static const char *const kReserved[] = {"alerte", "secours", "info", "vigilance", "fin", "b", "code", "status",
-                                            "tagval", "tagset",  "tag",  "T1",    "T2",    "T3",   "T4"};
+    static const char *const kReserved[] = {
+        "alerte", "secours", "info", "vigilance", "fin", "b", "code", "status", "tagval", "tagset", "tag",
+        "T1",     "T2",      "T3",   "T4",        "T5",  "T6", "T7",   "T8",     "T9",     "T10"};
     for (const char *r : kReserved) {
         if (strcasecmp(name, r) == 0) {
             return true;
@@ -881,13 +948,16 @@ bool GaulixPagerModule::entityTagsMatchMembership(const char entities[][SERVICE_
     return false;
 }
 
-bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, char *outText,
-                                                      size_t textLen, char entities[][SERVICE_TAG_VALUE_LEN],
+bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerCommandKind *outKind, uint32_t *outAlertId,
+                                                      char *outText, size_t textLen, char entities[][SERVICE_TAG_VALUE_LEN],
                                                       size_t maxEntities, size_t *outEntityCount)
 {
     msg = skipSpaces(msg);
     if (!msg || !outKind || !outText || textLen == 0 || !outEntityCount) {
         return false;
+    }
+    if (outAlertId) {
+        *outAlertId = 0;
     }
 
     size_t cmdLen = 0;
@@ -914,8 +984,7 @@ bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerComm
     outText[0] = '\0';
     *outEntityCount = 0;
 
-    // Format: #cmd <texte...> [#appartenance]
-    // Seul le dernier hashtag non réservé est l'appartenance (T1–T4 à la réception).
+    // Format: #cmd [N] <texte...> [#entité…]
     const char *tokens[48];
     size_t tokenLens[48];
     size_t tokenCount = 0;
@@ -935,25 +1004,56 @@ bool GaulixPagerModule::parseAlertCommandWithEntities(const char *msg, PagerComm
         cursor = skipSpaces(tokenEnd);
     }
 
-    size_t textTokenCount = tokenCount;
-    if (tokenCount > 0 && tokens[tokenCount - 1][0] == '#' && tokenLens[tokenCount - 1] > 1) {
-        char name[SERVICE_TAG_VALUE_LEN];
-        size_t nameLen = tokenLens[tokenCount - 1] - 1;
-        if (nameLen >= sizeof(name)) {
-            nameLen = sizeof(name) - 1;
+    size_t textStart = 0;
+    if (tokenCount > 0 && tokens[0][0] != '#') {
+        bool allDigits = true;
+        for (size_t i = 0; i < tokenLens[0]; i++) {
+            if (!std::isdigit(static_cast<unsigned char>(tokens[0][i]))) {
+                allDigits = false;
+                break;
+            }
         }
-        memcpy(name, tokens[tokenCount - 1] + 1, nameLen);
-        name[nameLen] = '\0';
-        if (!isReservedEntityHashtag(name) && entities && maxEntities > 0) {
-            strncpy(entities[0], name, SERVICE_TAG_VALUE_LEN - 1);
-            entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
-            *outEntityCount = 1;
-            textTokenCount = tokenCount - 1;
+        if (allDigits) {
+            char numBuf[16];
+            size_t copyLen = tokenLens[0] < sizeof(numBuf) - 1 ? tokenLens[0] : sizeof(numBuf) - 1;
+            memcpy(numBuf, tokens[0], copyLen);
+            numBuf[copyLen] = '\0';
+            if (outAlertId) {
+                *outAlertId = static_cast<uint32_t>(strtoul(numBuf, nullptr, 10));
+            }
+            textStart = 1;
         }
     }
 
+    size_t textEnd = tokenCount;
+    while (textEnd > textStart && tokens[textEnd - 1][0] == '#' && tokenLens[textEnd - 1] > 1) {
+        char name[SERVICE_TAG_VALUE_LEN];
+        size_t nameLen = tokenLens[textEnd - 1] - 1;
+        if (nameLen >= sizeof(name)) {
+            nameLen = sizeof(name) - 1;
+        }
+        memcpy(name, tokens[textEnd - 1] + 1, nameLen);
+        name[nameLen] = '\0';
+        if (isReservedEntityHashtag(name)) {
+            break;
+        }
+        if (entities && maxEntities > 0 && *outEntityCount < maxEntities) {
+            // Insérer en tête pour conserver l'ordre d'apparition après reverse scan.
+            for (size_t i = *outEntityCount; i > 0; i--) {
+                memcpy(entities[i], entities[i - 1], SERVICE_TAG_VALUE_LEN);
+            }
+            strncpy(entities[0], name, SERVICE_TAG_VALUE_LEN - 1);
+            entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
+            (*outEntityCount)++;
+        }
+        textEnd--;
+    }
+
     size_t textOffset = 0;
-    for (size_t i = 0; i < textTokenCount; i++) {
+    for (size_t i = textStart; i < textEnd; i++) {
+        if (tokens[i][0] == '#') {
+            continue;
+        }
         if (textOffset > 0 && textOffset + 1 < textLen) {
             outText[textOffset++] = ' ';
         }
@@ -1032,38 +1132,53 @@ void GaulixPagerModule::playFinBeeps()
 void GaulixPagerModule::drawAlertFrame(OLEDDisplay *display, OLEDDisplayUiState *state, int16_t x, int16_t y)
 {
     display->clear();
-
-    const int16_t centerX = x + display->getWidth() / 2;
-    const int16_t bottomY = y + display->getHeight() - FONT_HEIGHT_SMALL - 2;
-
-    display->setTextAlignment(TEXT_ALIGN_CENTER);
-    int16_t textY = y + 18;
-    display->setFont(FONT_MEDIUM);
-    const char *title = "ALERTE SECOURS";
-    if (display->getStringWidth(title) > display->getWidth()) {
-        display->setFont(FONT_SMALL);
-        textY = y + 14;
-    }
-    display->drawString(centerX, y + 2, title);
     display->setFont(FONT_SMALL);
     display->setTextAlignment(TEXT_ALIGN_LEFT);
-    if (alertText[0]) {
-        display->drawStringMaxWidth(x + 2, textY, display->getWidth() - 4, alertText);
-    }
 
+    const int16_t lineH = FONT_HEIGHT_SMALL;
+    const int16_t maxW = display->getWidth() - 4;
+    int16_t ly = y;
+
+    // L1 — type d'alerte (+ nº)
+    char line1[48];
+    if (activeAlertId != 0) {
+        snprintf(line1, sizeof(line1), "%s #%lu", pagerKindLabel(activeAlertKind),
+                 static_cast<unsigned long>(activeAlertId));
+    } else {
+        snprintf(line1, sizeof(line1), "%s", pagerKindLabel(activeAlertKind));
+    }
+    display->drawString(x + 2, ly, line1);
+    ly += lineH;
+
+    // L2 — texte
+    if (alertText[0]) {
+        display->drawStringMaxWidth(x + 2, ly, maxW, alertText);
+    }
+    ly += lineH;
+
+    // L3 — émetteur
+    if (alertEmitterName[0]) {
+        display->drawStringMaxWidth(x + 2, ly, maxW, alertEmitterName);
+    }
+    ly += lineH;
+
+    // L4 — réservé
+    ly += lineH;
+
+    // L5 — date / heure de réception
     if (lastAlertTime != 0) {
         time_t t = lastAlertTime;
         struct tm *tmInfo = localtime(&t);
         if (tmInfo) {
-            char timeBuf[20];
-            strftime(timeBuf, sizeof(timeBuf), "%d/%m %H:%M", tmInfo);
-            display->setTextAlignment(TEXT_ALIGN_CENTER);
-            display->drawString(centerX, bottomY - FONT_HEIGHT_SMALL - 2, timeBuf);
+            char timeBuf[24];
+            strftime(timeBuf, sizeof(timeBuf), "%d/%m/%Y %H:%M", tmInfo);
+            display->drawString(x + 2, ly, timeBuf);
         }
     }
+    ly += lineH;
 
-    display->setTextAlignment(TEXT_ALIGN_CENTER);
-    display->drawString(centerX, bottomY, "Appui = acquitter");
+    // L6 — confirmation lecture
+    display->drawStringMaxWidth(x + 2, ly, maxW, "Appuyer pour confirmer lecture");
 }
 
 void GaulixPagerModule::showAlertScreen()
@@ -1074,14 +1189,19 @@ void GaulixPagerModule::showAlertScreen()
     screen->startAlert(drawAlertFrame);
 }
 
-void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPacket &mp)
+void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPacket &mp, PagerCommandKind kind,
+                                     uint32_t alertId)
 {
     memset(alertText, 0, sizeof(alertText));
     if (text && text[0]) {
         strncpy(alertText, text, sizeof(alertText) - 1);
     } else {
-        strncpy(alertText, "Alerte secours", sizeof(alertText) - 1);
+        strncpy(alertText, pagerKindLabel(kind), sizeof(alertText) - 1);
     }
+
+    activeAlertKind = kind;
+    activeAlertId = alertId;
+    formatEmitterName(getFrom(&mp), alertEmitterName, sizeof(alertEmitterName));
 
     alertSourceNode = mp.from;
     alertSourceChannel = mp.channel;
@@ -1096,7 +1216,8 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     lastContinuousBeepMs = alertStartedMs;
 
     const char *via = isBroadcast(mp.to) ? "broadcast canal Alerte" : "DM bipper";
-    LOG_INFO("GaulixPager: alerte '%s' via %s de 0x%08x ch %u", alertText, via, alertSourceNode, alertSourceChannel);
+    LOG_INFO("GaulixPager: alerte #%lu '%s' via %s de 0x%08x ch %u", static_cast<unsigned long>(alertId), alertText, via,
+             alertSourceNode, alertSourceChannel);
 
     prepareBuzzerForAlert();
     playGaulixPagerPimPom();
@@ -1273,7 +1394,7 @@ void GaulixPagerModule::sendStatusReply(const meshtastic_MeshPacket &mp)
         snprintf(bipsLine, sizeof(bipsLine), "%u", configuredBeepCount);
     }
 
-    char reply[280];
+    char reply[400];
     char tagLine[SERVICE_TAG_LINE_LEN];
     formatServiceTagLine(tagLine, sizeof(tagLine));
     snprintf(reply, sizeof(reply), "Pager Gaulix - %s | Alertes: %lu | %s | Bips: %s | %s | Code: %s",
@@ -1330,6 +1451,9 @@ void GaulixPagerModule::clearAlert(bool playFinMelody)
     }
 
     alertActive = false;
+    activeAlertId = 0;
+    alertEmitterName[0] = '\0';
+    activeAlertKind = PagerCommandKind::Alerte;
     alertSourceNode = 0;
     alertSourceChannel = 0;
     hasAlertSourcePacket = false;
@@ -1375,14 +1499,23 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         return ProcessMessage::STOP;
     }
 
+    uint32_t finAlertId = 0;
     char finAffiliation[SERVICE_TAG_VALUE_LEN];
-    if (parseFinCommandWithAffiliation(buf, finAffiliation, sizeof(finAffiliation))) {
+    if (parseFinCommandEx(buf, &finAlertId, finAffiliation, sizeof(finAffiliation))) {
         if (finAffiliation[0]) {
             char entities[1][SERVICE_TAG_VALUE_LEN];
             strncpy(entities[0], finAffiliation, SERVICE_TAG_VALUE_LEN - 1);
             entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
             if (!entityTagsMatchMembership(entities, 1)) {
                 LOG_DEBUG("GaulixPager: #fin ignore (appartenance %s)", finAffiliation);
+                return ProcessMessage::STOP;
+            }
+        }
+        // #fin N : ne clôture que si le nº actif correspond (ou #fin sans Nº = toutes).
+        if (finAlertId != 0) {
+            if (!alertActive || activeAlertId == 0 || activeAlertId != finAlertId) {
+                LOG_DEBUG("GaulixPager: #fin %lu ignore (actif #%lu)", static_cast<unsigned long>(finAlertId),
+                          static_cast<unsigned long>(activeAlertId));
                 return ProcessMessage::STOP;
             }
         }
@@ -1414,10 +1547,11 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
     }
 
     PagerCommandKind kind = PagerCommandKind::Alerte;
+    uint32_t alertId = 0;
     char alertBody[96];
     char entityTags[MAX_ALERT_ENTITIES][SERVICE_TAG_VALUE_LEN];
     size_t entityCount = 0;
-    if (parseAlertCommandWithEntities(buf, &kind, alertBody, sizeof(alertBody), entityTags, MAX_ALERT_ENTITIES,
+    if (parseAlertCommandWithEntities(buf, &kind, &alertId, alertBody, sizeof(alertBody), entityTags, MAX_ALERT_ENTITIES,
                                       &entityCount)) {
         if (!entityTagsMatchMembership(entityTags, entityCount)) {
             LOG_DEBUG("GaulixPager: ignore (aucune entité locale parmi les tags)");
@@ -1426,13 +1560,8 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         if (kind == PagerCommandKind::Info) {
             triggerInfo(alertBody, mp);
         } else {
-            const char *fallback = "Alerte secours";
-            if (kind == PagerCommandKind::Secours) {
-                fallback = "Secours";
-            } else if (kind == PagerCommandKind::Vigilance) {
-                fallback = "Vigilance";
-            }
-            triggerAlert(alertBody[0] ? alertBody : fallback, mp);
+            const char *fallback = pagerKindLabel(kind);
+            triggerAlert(alertBody[0] ? alertBody : fallback, mp, kind, alertId);
         }
         return ProcessMessage::STOP;
     }
@@ -1468,12 +1597,12 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
     char validator[SERVICE_TAG_VALUE_LEN];
     const char *tagAlertText = nullptr;
     if (parseServiceTagAlert(buf, &serviceTag, validator, sizeof(validator), &tagAlertText)) {
-        // Membership is by entity name across any slot (T1–T4), not by alert slot index.
+        // Membership is by entity name across any slot (T1–T10), not by alert slot index.
         if (!serviceTagMatches(validator)) {
             LOG_DEBUG("GaulixPager: #T%u %s ignore (pas membre de cette entite)", serviceTag, validator);
             return ProcessMessage::STOP;
         }
-        triggerAlert(tagAlertText, mp);
+        triggerAlert(tagAlertText, mp, PagerCommandKind::Alerte, 0);
         return ProcessMessage::STOP;
     }
 
@@ -1618,7 +1747,7 @@ void GaulixPagerModule::formatServiceTagLine(char *buf, size_t len)
     offset += snprintf(buf + offset, len - offset, "Tag: ");
     bool first = true;
     bool any = false;
-    for (uint8_t tag = 1; tag <= 4; tag++) {
+    for (uint8_t tag = 1; tag <= SERVICE_TAG_SLOT_COUNT; tag++) {
         const char *value = getServiceTagValue(tag);
         if (!value[0]) {
             continue;

@@ -1,0 +1,56 @@
+---
+description: Les trois projets Gaulix (firmware, web, Android) évoluent toujours ensemble
+alwaysApply: true
+---
+
+# Écosystème Gaulix — évolution synchronisée
+
+## Chemins locaux (toujours)
+
+| Rôle | Chemin |
+|------|--------|
+| Firmware Bipper | `C:\firmware_meshtastic` |
+| Client web | `C:\client web mesthastic_bipper` |
+| Client Android | `C:\bipper_android` |
+
+Dépôts GitHub : `F4EED/Bipper_L1Pro`, `F4EED/client_web_MT_bipper`, `F4EED/bipper_android`.
+
+## Règle d’or
+
+**Toute évolution du protocole pager, des tags, de l’UI alerte, du SOS/POI ou des docs associées doit être traitée sur les trois projets dans la même session** (code + `.md`), sauf si l’utilisateur limite explicitement le périmètre.
+
+Ordre typique :
+
+1. **Firmware** — source de vérité du comportement radio / OLED
+2. **Client web** — composeur + settings (miroir TypeScript du format filaire)
+3. **Client Android** — composeur + settings (miroir Kotlin/KMP du même format)
+4. **Docs** — `docs/ECOSYSTEME-GAULIX.md` (firmware) + `docs/BIPPER-WEB.md` + `docs/BIPPER-ANDROID.md` + sections protocole dans `BIPPER1.md`
+
+## Protocole filaire courant (v1.11+)
+
+```text
+#alerte|#secours|#vigilance|#info [N] <texte> [#entité…]
+#fin [N] [#entité]
+```
+
+- `N` = numéro d’alerte (optionnel) ; `#fin N` ne clôture que l’alerte N
+- Plusieurs `#entité` = **OU** (membership T1–T10)
+- Sans `#entité` = broadcast tous bippers
+- Slots d’appartenance : **T1–T10** (`#tagset` / `#tagval`)
+- SOS waypoint → canal **Fr_Balise** (prévu)
+
+## Matériels pager (`GAULIX_PAGER=1`)
+
+| Matériel | Env PlatformIO |
+|:---------|:---------------|
+| Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` |
+| Elecrow ThinkNode M1 | `thinknode_m1` |
+| Elecrow ThinkNode M2 | `thinknode_m2` |
+
+Ne pas diverger web/Android sans mettre à jour le firmware (et inversement).
+
+## Docs canoniques
+
+- Firmware : `docs/ECOSYSTEME-GAULIX.md`, `docs/BIPPER1.md`
+- Web : `docs/BIPPER-WEB.md`
+- Android : `docs/BIPPER-ANDROID.md`

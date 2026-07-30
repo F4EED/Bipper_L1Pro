@@ -3,32 +3,32 @@
 | | |
 |:--|:--|
 | **Projet** | Pager d'alerte secours — Réseau Gaulix |
-| **Matériel cible** | Seeed Wio Tracker L1 Pro |
-| **Environnement PlatformIO** | `seeed_wio_tracker_L1` |
+| **Matériels cibles** | Seeed Wio Tracker L1 Pro · Elecrow ThinkNode M1 · Elecrow ThinkNode M2 |
+| **Environnements PlatformIO** | `seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` |
 | **Dépôt** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Base upstream** | [meshtastic/firmware](https://github.com/meshtastic/firmware) |
-| **État actuel** | **Gaulix Bipper v1.10.0** — pager secours opérationnel (alertes multi-niveaux, appartenance T1–T4, son, acquittement, ACK, historique, alarme batterie) |
+| **État actuel** | **Gaulix Bipper v1.11.0** — nº d’alerte, multi-entités, T1–T10, écran alerte L1–L6, son, acquittement, ACK, historique, alarme batterie |
 | **Documents liés** | [Cahier des charges](cahier-des-charges-bip-alerte-gaulix.md) · [Roadmap phases](propositions-phases-bip-gaulix.md) · [Écosystème clients](ECOSYSTEME-GAULIX.md) |
 
 ---
 
 ## Vue d'ensemble
 
-Ce fork transforme un **Seeed Wio Tracker L1 Pro** en terminal **pager d'alerte** pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
+Ce fork transforme un **Seeed Wio Tracker L1 Pro**, un **Elecrow ThinkNode M1** (e-ink) ou un **ThinkNode M2** (OLED ESP32-S3) en terminal **pager d'alerte** pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
 
-L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.10.0** couvre la Phase 1 et une partie de la Phase 2 : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin`, filtre d'**appartenance** (`#entité` contrôlée contre T1–T4), signal pim-pom, écran plein page, acquittement, ACK DM avec horodatage et GPS, historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
+L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.11.0** couvre : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin` avec **numéro d’alerte** optionnel et **multi-appartenances** (`#entité…` contrôlées contre **T1–T10**), signal pim-pom, écran plein page **L1–L6**, acquittement, ACK DM avec horodatage et GPS (Fr_Balise), historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
 
-Les coordinateurs envoient les commandes depuis le [client web](https://github.com/F4EED/client_web_MT_bipper) (`/alerts`) ou l'[app Android Gaulix_bipper](https://github.com/F4EED/bipper_android) — voir [Écosystème](ECOSYSTEME-GAULIX.md).
+Les coordinateurs envoient les commandes depuis le [client web](https://github.com/F4EED/client_web_MT_bipper) (`/alerts`) ou l'[app Android Gaulix_bipper](https://github.com/F4EED/bipper_android) — voir [Écosystème](ECOSYSTEME-GAULIX.md). **Les trois projets évoluent ensemble.**
 
-**Fonctionnalités implémentées (v1.10.0) :**
+**Fonctionnalités implémentées (v1.11.0) :**
 
-- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) — `GAULIX_PAGER_VERSION "v1.10.0"` ;
+- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) — `GAULIX_PAGER_VERSION "v1.11.0"` ;
 - module `GaulixPagerAlertListModule` (historique 20 alertes, défilement Haut/Bas) ;
-- commandes whitelist : `#alerte`, `#secours`, `#vigilance`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tag`, `#T1`…`#T4` ;
-- format filaire : `#cmd <texte> [#appartenance]` — appartenance optionnelle filtrée contre les tags T1–T4 locaux ;
+- commandes whitelist : `#alerte`, `#secours`, `#vigilance`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tagset`, `#tagval`, `#T1`…`#T10` ;
+- format filaire : `#cmd [N] <texte> [#entité…]` — `#fin [N]` ; multi-entités en **OU** contre T1–T10 ;
 - son **pim-pom** (2 tons, duty 80 %) en boucle jusqu'à acquittement ; 3 séquences pour `#info` ;
 - son **batterie faible** (10 %, duty 45 %, 1 bip) — répété toutes les 5 min, silencieux si charge USB ;
-- écran alerte **ALERTE SECOURS** + texte + horodatage `JJ/MM HH:MM` ;
+- écran alerte **L1 type (+#N) · L2 texte · L3 émetteur · L4 · L5 date/heure · L6 confirmer lecture** ;
 - **ACK** automatique en DM : `Pager ACK alerte JJ/MM HH:MM` (+ position GPS sur **Fr_Balise** si activée) ;
 - canaux **muets** sauf **Alerte** ; région **EU868** forcée à chaque boot ;
 - carrousel trackball : pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées ;
@@ -50,38 +50,44 @@ Les coordinateurs envoient les commandes depuis le [client web](https://github.c
 ```
 
 1. Le coordinateur envoie une commande depuis l'app Meshtastic (DM ou canal **Alerte**).
-2. Le pager reçoit le paquet, filtre la whitelist (`#alerte`, `#secours`, `#T1`…`#T4`, etc.).
-3. L'opérateur entend le **pim-pom** en boucle, voit l'écran **ALERTE SECOURS** et acquitte (trackball).
+2. Le pager reçoit le paquet, filtre la whitelist (`#alerte`, `#secours`, `#T1`…`#T10`, etc.).
+3. L'opérateur entend le **pim-pom** en boucle, voit l'écran **L1–L6** et acquitte (trackball).
 4. Un **ACK** DM est renvoyé à l'émetteur avec horodatage et position GPS (si GPS activé).
 
-### Comportement actuel (v1.10.0)
+### Comportement actuel (v1.11.0)
 
 | Composant | Comportement |
 |:----------|:-------------|
-| **Compilation** | `-D GAULIX_PAGER=1` sur `seeed_wio_tracker_L1` uniquement. |
+| **Compilation** | `-D GAULIX_PAGER=1` sur `seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`. |
 | **GaulixPagerModule** | `SinglePortModule` promiscuous ; traite les commandes avant `TextMessageModule`. |
 | **Son alerte** | Séquence **pim-pom** (3100 Hz / 2400 Hz, duty 80 %, 220 ms) répétée toutes les 1,5 s jusqu'à acquittement, `#fin` ou timeout 30 min. |
 | **Son info** | `#info` / `#Info` : 3 séquences pim-pom, pas d'écran alerte. |
 | **Son batterie** | À **≤ 10 %** (hors charge USB) : 1 bip doux (2400 Hz, duty 45 %, 120 ms), puis rappel toutes les **5 min**. |
-| **Écran alerte** | Plein page bloqué : ALERTE SECOURS, texte, `JJ/MM HH:MM`, « Appui = acquitter ». |
-| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.10.0, batterie. |
-| **Historique alertes** | 2ᵉ frame carrousel : 20 dernières alertes (`#alerte`, `#secours`, `#T1`–`#T4`, `#info`), scroll Haut/Bas. |
+| **Écran alerte** | L1 type (+`#N`) · L2 texte · L3 émetteur · L4 · L5 date/heure · L6 « Appuyer pour confirmer lecture ». |
+| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.11.0, batterie. |
+| **Historique alertes** | 2ᵉ frame carrousel : 20 dernières alertes (`#alerte`, `#secours`, `#T1`–`#T10`, `#info`), scroll Haut/Bas. |
 | **Carrousel UI** | Pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées (Gaulix uniquement). |
 | **Canaux** | Tous **muets** sauf **Alerte** (réappliqué à chaque boot). |
 | **Compteur alertes** | Incrémenté à chaque alerte ; **remis à zéro** à chaque allumage. |
-| **Persistance** | Code, `#b`, tag service dans `/prefs/gaulixpager.cfg`. |
+| **Persistance** | Code, `#b`, tags T1–T10 dans `/prefs/gaulixpager.cfg`. |
 
 ### Activation compile-time
 
 Le mode pager est conditionné par le macro `GAULIX_PAGER`, défini dans la variante :
 
 ```ini
-# variants/nrf52840/seeed_wio_tracker_L1/platformio.ini
+# variants/.../platformio.ini (L1, ThinkNode M1, ThinkNode M2)
 build_flags = ...
   -D GAULIX_PAGER=1
 ```
 
-Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` pour ne pas impacter les autres cartes.
+| Env | Variante |
+|:----|:---------|
+| `seeed_wio_tracker_L1` | `variants/nrf52840/seeed_wio_tracker_L1/` |
+| `thinknode_m1` | `variants/nrf52840/ELECROW-ThinkNode-M1/` |
+| `thinknode_m2` | `variants/esp32s3/ELECROW-ThinkNode-M2/` |
+
+Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` pour ne pas impacter les autres cartes (ni `thinknode_m1-inkhud`).
 
 ---
 
@@ -105,6 +111,8 @@ Tout le code Gaulix est entouré de `#if defined(GAULIX_PAGER) && HAS_SCREEN` po
 | Fichier | Modification |
 |:--------|:-------------|
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1`. |
+| `variants/nrf52840/ELECROW-ThinkNode-M1/platformio.ini` | Ajout de `-D GAULIX_PAGER=1` (env `thinknode_m1`). |
+| `variants/esp32s3/ELECROW-ThinkNode-M2/platformio.ini` | Ajout de `-D GAULIX_PAGER=1` (env `thinknode_m2`). |
 | `src/modules/Modules.cpp` | Enregistrement `GaulixPagerModule` + `GaulixPagerAlertListModule`. |
 | `src/mesh/NodeDB.cpp` | EU868 forcé ; nom long usine `Bipper de demo`. |
 | `src/graphics/Screen.cpp` | Masquage carrousel (Node, Bearings, LoRa, favoris) ; blocage pendant alerte. |
@@ -360,6 +368,8 @@ La variante déclare `custom_meshtastic_requires_dfu = true` : le flashage passe
 ```bash
 cd firmware_meshtastic
 pio run -e seeed_wio_tracker_L1
+pio run -e thinknode_m1
+pio run -e thinknode_m2
 ```
 
 | Sortie | Chemin |
@@ -395,29 +405,29 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 
 ---
 
-## Commandes implémentées (v1.10.0)
+## Commandes implémentées (v1.11.0)
 
 Format général des alertes :
 
 ```text
-#alerte|#secours|#vigilance|#info <texte libre> [#appartenance]
-#fin [#appartenance]
+#alerte|#secours|#vigilance|#info [N] <texte libre> [#entité…]
+#fin [N] [#entité]
 ```
 
 | Commande | Action | Exemple |
 |:---------|:-------|:--------|
-| `#alerte <texte> [#app]` | Alerte secours | `#alerte Rassemblement hall` · `#alerte Feu #odm42` |
-| `#secours <texte> [#app]` | Synonyme / variante alerte | `#secours Renforts Nord` |
-| `#vigilance <texte> [#app]` | Niveau vigilance | `#vigilance Crue attendue #aasc` |
-| `#info <texte> [#app]` | 3× pim-pom, pas d'écran alerte plein page | `#info Exercice terminé` |
-| `#fin [#app]` | Fin d'alerte à distance (2 bips fin) | `#fin` · `#fin #odm42` |
-| `#T1`…`#T4 <texte>` | Alerte legacy si tag local correspond | `#T1 Intervention` |
-| `#tag …` | Définir les valeurs T1–T4 persistantes | via client web / app Android |
+| `#alerte [N] <texte> [#e…]` | Alerte secours | `#alerte 42 Feu hall #SDIS42 #test` |
+| `#secours [N] <texte> [#e…]` | Variante alerte | `#secours 42 Renforts Nord #DEPT42` |
+| `#vigilance [N] <texte> [#e…]` | Niveau vigilance | `#vigilance 7 Crue #aasc` |
+| `#info [N] <texte> [#e…]` | 3× pim-pom, pas d'écran plein page | `#info 7 Exercice terminé #test` |
+| `#fin [N] [#e]` | Fin d'alerte (`N` = clôture ciblée) | `#fin` · `#fin 42` · `#fin 42 #SDIS42` |
+| `#T1`…`#T10 <entité> [texte]` | Alerte legacy si membership | `#T1 SDIS42 Intervention` |
+| `#tagset` / `#tagval` | Valeurs T1–T10 persistantes | `#tagset T1=SDIS42,T10=UDIOM42` |
 | `#b <n>` | Nombre de bips config (NVS) | `#b 3` |
 | `#code <ancien> <nouveau>` | Code d'activation persistant | `#code GAULIX GAULIX26` |
 | `#status` | État du pager en DM | `#status` |
 
-**Appartenance :** seul le **dernier** jeton `#…` non réservé est l'appartenance. À la réception, le Bipper compare ce jeton à ses tags **T1–T4** ; s'il ne correspond à aucun, l'alerte est ignorée. Sans `#appartenance`, tous les Bippers concernés réagissent.
+**Appartenance :** un ou plusieurs jetons `#entité` (OU). À la réception, le Bipper compare à ses slots **T1–T10** ; s'il ne correspond à aucun, l'alerte est ignorée. Sans `#entité`, tous les Bippers réagissent. Slot local `"all"` (défaut T1) accepte toute entité.
 
 > **Whitelist stricte** : tout autre texte (ex. `test`) est ignoré par `GaulixPagerModule` (pas d'alerte, pas de buzzer).
 
@@ -425,9 +435,9 @@ Format général des alertes :
 
 | Événement | Son | Écran | ACK DM |
 |:----------|:----|:------|:-------|
-| `#alerte` / `#secours` / `#vigilance` / `#T1`…`#T4` | Pim-pom en boucle (1,5 s) | Plein page jusqu'à acquittement | Non |
+| `#alerte` / `#secours` / `#vigilance` / `#T1`…`#T10` | Pim-pom en boucle (1,5 s) | Plein page L1–L6 jusqu'à acquittement | Non |
 | Acquittement (trackball) | 1 bip fin | Retour accueil immédiat | `Pager ACK alerte JJ/MM HH:MM` (+ GPS Fr_Balise) |
-| `#fin` | 2 bips fin | Retour accueil | Non |
+| `#fin` / `#fin N` | 2 bips fin | Retour accueil | Non |
 | `#info` | 3× pim-pom puis silence | Inchangé | Non |
 | Batterie ≤ 10 % (hors USB) | 1 bip doux, rappel 5 min | Inchangé | Non |
 | 30 min sans acquittement | Arrêt silencieux | Retour accueil | Non |
