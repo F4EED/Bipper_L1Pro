@@ -213,9 +213,10 @@ Le fichier `.vscode/tasks.json` local (s'il existe) peut contenir des tâches de
 | `seeed_wio_tracker_L1` | OLED | **Oui** (`GAULIX_PAGER=1`) |
 | `thinknode_m1` | E-ink 1.54\" (Elecrow) | **Oui** (`GAULIX_PAGER=1`) |
 | `thinknode_m2` | OLED SH1106 (Elecrow ESP32-S3) | **Oui** (`GAULIX_PAGER=1`) |
+| `seeed_wio_tracker_L1_eink` | E-ink L1 | **Oui** (`GAULIX_PAGER=1`) |
 | `seeed-xiao-s3-gaulix` | aucun (XIAO S3 + Wio-SX1262) | **PC crise** (`GAULIX_PC_NODE=1`) |
-| `seeed_wio_tracker_L1_eink` | E-ink | **Non** (pas encore activé) |
 | `thinknode_m1-inkhud` | InkHUD | **Non** (UI incompatible) |
+| `seeed_wio_tracker_L1_eink-inkhud` | InkHUD | **Non** (UI incompatible) |
 
 ### Build complet — variante OLED Gaulix
 
@@ -238,7 +239,7 @@ Le premier build télécharge les toolchains et bibliothèques — comptez **15 
 
 > Le `build_dir` est défini à la racine du disque (`C:/pio-build`) dans `platformio.ini` pour éviter les chemins trop longs et les conflits de verrous sous Windows.
 
-### Build variante e-ink (sans Gaulix)
+### Build variante e-ink L1 (Gaulix pager)
 
 ```powershell
 python -m platformio run -e seeed_wio_tracker_L1_eink -j 1

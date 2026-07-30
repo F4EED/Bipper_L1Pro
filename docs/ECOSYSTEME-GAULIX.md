@@ -13,10 +13,11 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Matériel | Env PlatformIO | Arch | Écran | Buzzer |
 |:---------|:---------------|:-----|:------|:-------|
 | Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` | nRF52840 | OLED | oui |
+| Seeed Wio Tracker L1 E-Ink | `seeed_wio_tracker_L1_eink` | nRF52840 | e-ink | oui |
 | Elecrow ThinkNode M1 | `thinknode_m1` | nRF52840 | e-ink 1.54\" | oui (`PIN_BUZZER`) |
 | Elecrow ThinkNode M2 | `thinknode_m2` | ESP32-S3 | OLED SH1106 | oui (`PIN_BUZZER`) |
 
-> Variante `thinknode_m1-inkhud` : **pas** de mode Gaulix (UI InkHUD incompatible avec les frames pager).
+> Variantes InkHUD (`thinknode_m1-inkhud`, `seeed_wio_tracker_L1_eink-inkhud`) : **pas** de mode Gaulix pager (UI incompatible).
 
 ## Nœud PC de crise (`GAULIX_PC_NODE=1`)
 

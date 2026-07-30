@@ -44,6 +44,7 @@ Ordre typique :
 | Matériel | Env PlatformIO | Macro |
 |:---------|:---------------|:------|
 | Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` | `GAULIX_PAGER` |
+| Seeed Wio Tracker L1 E-Ink | `seeed_wio_tracker_L1_eink` | `GAULIX_PAGER` |
 | Elecrow ThinkNode M1 | `thinknode_m1` | `GAULIX_PAGER` |
 | Elecrow ThinkNode M2 | `thinknode_m2` | `GAULIX_PAGER` |
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | `GAULIX_PC_NODE` (PC crise, sans écran) |

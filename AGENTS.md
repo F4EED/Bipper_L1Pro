@@ -31,7 +31,8 @@ Ce checkout est le firmware **Gaulix Bipper** **v1.11.0**. Il évolue **toujours
 
 | Env PlatformIO | Rôle |
 |----------------|------|
-| `seeed_wio_tracker_L1` | Pager L1 Pro |
+| `seeed_wio_tracker_L1` | Pager L1 Pro OLED |
+| `seeed_wio_tracker_L1_eink` | Pager L1 E-Ink |
 | `thinknode_m1` | Pager ThinkNode M1 |
 | `thinknode_m2` | Pager ThinkNode M2 |
 | `seeed-xiao-s3-gaulix` | PC crise XIAO ESP32-S3 + Wio-SX1262 |
