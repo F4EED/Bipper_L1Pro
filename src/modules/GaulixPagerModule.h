@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.11.0"
+#define GAULIX_PAGER_VERSION "v1.12.2"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 #define GAULIX_DEFAULT_SERVICE_TAG_T1 "all"
@@ -36,6 +36,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
         bool isInfo = false;
         bool acknowledged = false;
         bool timedOut = false;
+        bool closedByFin = false;
         char text[64] = {};
     };
 
@@ -178,9 +179,12 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static void formatServiceTagLine(char *buf, size_t len);
     static void formatStatusLine(char *buf, size_t len, OLEDDisplay *display);
     static void recordAlert();
+    /** Décrémente Nb AL. à la clôture (#fin), saturé à 0 (jamais -1 / wrap). */
+    static void unrecordAlert();
     static void addAlertHistoryEntry(const char *text, const meshtastic_MeshPacket &mp, bool isInfo = false);
     static void markCurrentAlertHistoryAcknowledged();
     static void markCurrentAlertHistoryTimedOut();
+    static void markCurrentAlertHistoryClosedByFin();
 };
 
 extern GaulixPagerModule *gaulixPagerModule;

@@ -54,6 +54,10 @@ extern "C" {
 // #define LED_BLUE PIN_LED1
 #define LED_STATE_ON 1 // State when LED is lit  // LED灯亮时的状态
 #define PIN_BUZZER (0 + 6)
+// Gaulix alert buzzer: 75 % of piezo PWM capability (capped at 80 % in buzz.cpp).
+#ifndef GAULIX_BUZZER_DUTY
+#define GAULIX_BUZZER_DUTY 75
+#endif
 /*
  * Buttons
  */

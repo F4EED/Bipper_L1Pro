@@ -7,7 +7,7 @@
 | **Environnements PlatformIO** | `seeed_wio_tracker_L1` · `seeed_wio_tracker_L1_eink` · `thinknode_m1` · `thinknode_m2` · `seeed-xiao-s3-gaulix` |
 | **Dépôt** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Base upstream** | [meshtastic/firmware](https://github.com/meshtastic/firmware) |
-| **État actuel** | **Gaulix Bipper v1.11.0** — nº d’alerte, multi-entités, T1–T10, écran alerte L1–L6, son, acquittement, ACK, historique, alarme batterie |
+| **État actuel** | **Gaulix Bipper v1.12.0** — nº d’alerte, multi-entités, T1–T10, écran alerte L1–L6, son, acquittement, ACK, historique, alarme batterie |
 | **Documents liés** | [Cahier des charges](cahier-des-charges-bip-alerte-gaulix.md) · [Roadmap phases](propositions-phases-bip-gaulix.md) · [Écosystème clients](ECOSYSTEME-GAULIX.md) |
 
 ---
@@ -16,20 +16,22 @@
 
 Ce fork transforme un **Seeed Wio Tracker L1 Pro**, un **Elecrow ThinkNode M1** (e-ink) ou un **ThinkNode M2** (OLED ESP32-S3) en terminal **pager d'alerte**, et un kit **Seeed XIAO ESP32-S3 + Wio-SX1262** en nœud **PC de crise** (sans écran), pour le réseau LoRa maillé **Gaulix**, en s'appuyant sur le firmware [Meshtastic](https://meshtastic.org).
 
-L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.11.0** couvre : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin` avec **numéro d’alerte** optionnel et **multi-appartenances** (`#entité…` contrôlées contre **T1–T10**), signal pim-pom, écran plein page **L1–L6**, acquittement, ACK DM avec horodatage et GPS (Fr_Balise), historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
+L'objectif opérationnel (secours citoyen, AASC, PCS) est décrit dans le [cahier des charges](cahier-des-charges-bip-alerte-gaulix.md). Le firmware **v1.12.0** couvre : commandes `#alerte` / `#secours` / `#vigilance` / `#info` / `#fin` avec **numéro d’alerte** optionnel et **multi-appartenances** (`#entité…` contrôlées contre **T1–T10**), signal pim-pom, écran plein page **L1–L6**, acquittement, ACK DM avec horodatage et GPS (Fr_Balise), historique des alertes, carrousel UI épuré, alarme batterie faible (10 %).
 
 Les coordinateurs envoient les commandes depuis le [client web](https://github.com/F4EED/client_web_MT_bipper) (`/alerts`) ou l'[app Android Gaulix_bipper](https://github.com/F4EED/bipper_android) — voir [Écosystème](ECOSYSTEME-GAULIX.md). **Les trois projets évoluent ensemble.**
 
-**Fonctionnalités implémentées (v1.11.0) :**
+**Fonctionnalités implémentées (v1.12.0) :**
 
-- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) — `GAULIX_PAGER_VERSION "v1.11.0"` ;
+- module `GaulixPagerModule` (traitement messages, UI, buzzer, NVS) — `GAULIX_PAGER_VERSION "v1.12.0"` ;
 - module `GaulixPagerAlertListModule` (historique 20 alertes, défilement Haut/Bas) ;
 - commandes whitelist : `#alerte`, `#secours`, `#vigilance`, `#fin`, `#b`, `#code`, `#status`, `#Info` / `#info`, `#tagset`, `#tagval`, `#T1`…`#T10` ;
 - format filaire : `#cmd [N] <texte> [#entité…]` — `#fin [N]` ; multi-entités en **OU** contre T1–T10 ;
 - son **pim-pom** (2 tons, duty 80 %) en boucle jusqu'à acquittement ; 3 séquences pour `#info` ;
 - son **batterie faible** (10 %, duty 45 %, 1 bip) — répété toutes les 5 min, silencieux si charge USB ;
 - écran alerte **L1 type (+#N) · L2 texte · L3 émetteur · L4 · L5 date/heure · L6 confirmer lecture** ;
-- **ACK** automatique en DM : `Pager ACK alerte JJ/MM HH:MM` (+ position GPS sur **Fr_Balise** si activée) ;
+- **ACK** automatique en DM : `Pager ACK alerte [#N] JJ/MM HH:MM` (+ position GPS sur **Fr_Balise** si activée) ;
+- **Nb AL.** : compteur d’alertes non clôturées (−1 saturé à 0 sur ACK / `#fin` / timeout) ;
+- ThinkNode M1 : duty buzzer alerte **75 %** ;
 - canaux **muets** sauf **Alerte** ; région **EU868** forcée à chaque boot ;
 - carrousel trackball : pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées ;
 - 40 messages prédéfinis Gaulix (CannedMessage) ; nom usine `Bipper de demo`.
@@ -54,7 +56,7 @@ Les coordinateurs envoient les commandes depuis le [client web](https://github.c
 3. L'opérateur entend le **pim-pom** en boucle, voit l'écran **L1–L6** et acquitte (trackball).
 4. Un **ACK** DM est renvoyé à l'émetteur avec horodatage et position GPS (si GPS activé).
 
-### Comportement actuel (v1.11.0)
+### Comportement actuel (v1.12.0)
 
 | Composant | Comportement |
 |:----------|:-------------|
@@ -64,7 +66,7 @@ Les coordinateurs envoient les commandes depuis le [client web](https://github.c
 | **Son info** | `#info` / `#Info` : 3 séquences pim-pom, pas d'écran alerte. |
 | **Son batterie** | À **≤ 10 %** (hors charge USB) : 1 bip doux (2400 Hz, duty 45 %, 120 ms), puis rappel toutes les **5 min**. |
 | **Écran alerte** | L1 type (+`#N`) · L2 texte · L3 émetteur · L4 · L5 date/heure · L6 « Appuyer pour confirmer lecture ». |
-| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.11.0, batterie. |
+| **Écran accueil** | 4 lignes : nom long, `Nb AL. : N \| Der. : HH:MM`, Bipper Gaulix v1.12.0, batterie. |
 | **Historique alertes** | 2ᵉ frame carrousel : 20 dernières alertes (`#alerte`, `#secours`, `#T1`–`#T10`, `#info`), scroll Haut/Bas. |
 | **Carrousel UI** | Pages **Node**, **Bearings**, **LoRa** et favoris `*Node*` masquées (Gaulix uniquement). |
 | **Canaux** | Tous **muets** sauf **Alerte** (réappliqué à chaque boot). |
@@ -299,7 +301,7 @@ L'écran fonctionnel est désigné **Etat_bipper** : c'est l'écran d'accueil pa
 ┌─────────────────────────────┐
 │ Bipper de demo              │  ← L1 : nom long (ou « En écoute »)
 │ Nb AL. : 0 | Der. : --:--   │  ← L2 : compteur | dernière heure
-│   Bipper Gaulix v1.11.0     │  ← L3 : titre + version (centré)
+│   Bipper Gaulix v1.12.0     │  ← L3 : titre + version (centré)
 │ Batterie : 78 %             │  ← L4 : niveau batterie
 │ Trackball >                 │  ← hint historique alertes (frame 2)
 └─────────────────────────────┘
@@ -309,7 +311,7 @@ L'écran fonctionnel est désigné **Etat_bipper** : c'est l'écran d'accueil pa
 |:-----|:-------|
 | Ligne 1 | `owner.long_name` ; si absent → `En écoute` ; si trop large pour l'OLED → `Nom long : !!!trop long` |
 | Ligne 2 | `Nb AL. : N \| Der. : HH:MM` (ou `--:--`) |
-| Ligne 3 | `Bipper Gaulix v1.11.0` (`GAULIX_PAGER_TITLE`) |
+| Ligne 3 | `Bipper Gaulix v1.12.0` (`GAULIX_PAGER_TITLE`) |
 | Ligne 4 | Batterie %, `USB`, ou `--` |
 | Compteur | Remis à **zéro** à chaque allumage ; `#info` n'incrémente pas |
 | Frame 2 | Historique alertes (`GaulixPagerAlertListModule`) — scroll Haut/Bas |
@@ -425,11 +427,11 @@ Remplacer `COMx` par le port série détecté (ex. `COM7` sous Windows).
 1. Allumer le bippeur et le configurer dans l'app Meshtastic (nom du nœud, etc.).
 2. Si l'appareil avait une config antérieure : effectuer un **factory reset** pour appliquer les canaux Gaulix.
 3. Vérifier dans l'app que les canaux `Fr_Balise`, `Fr_EMCOM`, `Fr_BlaBla`, `Fr_Tech` et `Alerte` sont présents.
-4. L'écran d'accueil **Bipper Gaulix v1.11.0** s'affiche (frame pager dédiée).
+4. L'écran d'accueil **Bipper Gaulix v1.12.0** s'affiche (frame pager dédiée).
 
 ---
 
-## Commandes implémentées (v1.11.0)
+## Commandes implémentées (v1.12.0)
 
 Format général des alertes :
 
@@ -460,7 +462,7 @@ Format général des alertes :
 | Événement | Son | Écran | ACK DM |
 |:----------|:----|:------|:-------|
 | `#alerte` / `#secours` / `#vigilance` / `#T1`…`#T10` | Pim-pom en boucle (1,5 s) | Plein page L1–L6 jusqu'à acquittement | Non |
-| Acquittement (trackball) | 1 bip fin | Retour accueil immédiat | `Pager ACK alerte JJ/MM HH:MM` (+ GPS Fr_Balise) |
+| Acquittement (trackball) | 1 bip fin | Retour accueil immédiat | `Pager ACK alerte [#N] JJ/MM HH:MM` (+ GPS Fr_Balise) |
 | `#fin` / `#fin N` | 2 bips fin | Retour accueil | Non |
 | `#info` | 3× pim-pom puis silence | Inchangé | Non |
 | Batterie ≤ 10 % (hors USB) | 1 bip doux, rappel 5 min | Inchangé | Non |
@@ -472,7 +474,7 @@ Format général des alertes :
 
 Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md).
 
-### Phase 1 — Pager secours *(implémentée — v1.11.0)*
+### Phase 1 — Pager secours *(implémentée — v1.12.0)*
 
 | Fonction | Statut | Description |
 |:---------|:------:|:------------|
@@ -491,7 +493,7 @@ Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md)
 | Écran plein page alerte L1–L6 | ✅ | Type/#N · texte · émetteur · date · confirmer |
 | LED clignotante | ✅ | PIN_LED1 pendant alerte (selon carte) |
 | Acquittement | ✅ | ACK DM + bip fin |
-| ACK automatique + GPS | ✅ | `Pager ACK alerte JJ/MM HH:MM \| lat lon` (Fr_Balise) |
+| ACK automatique + GPS | ✅ | `Pager ACK alerte [#N] JJ/MM HH:MM \| lat lon` (Fr_Balise) |
 | Code d'activation `#code` | ✅ | Persistance `gaulixpager.cfg` |
 | `#status` | ✅ | État pager en DM |
 | Timeout 30 min | ✅ | Coupure auto sans acquittement |
@@ -527,14 +529,14 @@ Roadmap : [propositions-phases-bip-gaulix.md](propositions-phases-bip-gaulix.md)
 
 ## Tests et validation
 
-### Vérifications manuelles (v1.11.0)
+### Vérifications manuelles (v1.12.0)
 
 | Test | Résultat attendu |
 |:-----|:-----------------|
 | Build `seeed_wio_tracker_L1` | Compilation OK, UF2 dans `C:\pio-build\` |
 | Build `thinknode_m1` / `thinknode_m2` | Compilation OK |
 | Build `seeed-xiao-s3-gaulix` | Compilation OK (PC crise, sans UI pager) |
-| Boot pager | Écran accueil : nom, `Nb AL. : 0`, `Bipper Gaulix v1.11.0` |
+| Boot pager | Écran accueil : nom, `Nb AL. : 0`, `Bipper Gaulix v1.12.0` |
 | Carrousel | Pas de pages Node, Bearings, LoRa, `*Node*` |
 | Batterie ≤ 10 % | 1 bip doux, rappel 5 min (silencieux si USB) |
 | `#info test` | 3× pim-pom, pas d'écran alerte |
@@ -583,6 +585,7 @@ firmware_meshtastic/
 
 | Version | Date | Auteur | Notes |
 |:--------|:-----|:-------|:------|
+| 1.6 | 31/07/2026 | Réseau Gaulix | **v1.12.0** : Nb AL. saturé (#fin/ACK), ACK `#N`, M1 buzzer 75 %, sync Gestion alertes / Signalement clients |
 | 1.5 | 30/07/2026 | Réseau Gaulix | **v1.11.0** : nº alerte, multi-entités T1–T10, ThinkNode M1/M2, PC crise XIAO S3+SX1262 |
 | 1.4 | 20/07/2026 | Réseau Gaulix | Alignement **v1.10.0** : `#vigilance`, appartenance `#entité` vs T1–T4, liens clients web/Android |
 | 1.3 | 13/07/2026 | Réseau Gaulix | v1.6 : alarme batterie 10 %, historique alertes, carrousel épuré, `Nb AL.` / `Der.` |

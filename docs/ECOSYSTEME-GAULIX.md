@@ -33,13 +33,16 @@ Build : `pio run -e seeed-xiao-s3-gaulix`. Nom usine : **Gaulix PC Crise**. Mêm
 
 | Composant | Version / état |
 |:----------|:---------------|
-| Firmware pager | **v1.11.0** (`GAULIX_PAGER_VERSION`) |
+| Firmware pager | **v1.12.1** (`GAULIX_PAGER_VERSION`) |
 | Protocole filaire | `#alerte\|#secours\|#vigilance\|#info [N] <texte> [#entité…]` · `#fin [N] [#entité]` |
+| ACK lecture | `Pager ACK alerte [#N] …` en **broadcast canal Alerte** (plus de DM PKI → Fr_BlaBla/Primary) |
 | Canal alertes | **Alerte** (index 7 usine) |
-| Canal SOS / ACK position | **Fr_Balise** |
+| Canal SOS / ACK / waypoints signalement | **Fr_Balise** |
 | Tags service (appartenance) | **T1–T10** |
 | Multi-entités | Plusieurs `#entité` = **OU** |
 | Nº d’alerte | Optionnel ; `#fin N` clôture uniquement N |
+| Nb AL. (écran) | Alertes non clôturées ; −1 saturé à 0 (#fin / ACK / timeout) |
+| ThinkNode M1 buzzer | PWM duty **75 %** (`GAULIX_BUZZER_DUTY`) |
 
 ## Format filaire (source de vérité)
 
@@ -71,7 +74,7 @@ Config appartenance locale :
 #status
 ```
 
-## Écran alerte Bipper (v1.11)
+## Écran alerte Bipper (v1.12)
 
 | Ligne | Contenu |
 |:------|:--------|
@@ -104,11 +107,12 @@ Config appartenance locale :
 
 | Item | Firmware | Web | Android |
 |:-----|:---------|:----|:--------|
-| Nº alerte + multi-tags + T1–T10 + écran L1–L6 | ✅ v1.11 | ✅ aligné | ✅ aligné |
-| ThinkNode M1 / M2 (`GAULIX_PAGER`) | ✅ | ✅ détection HW | ✅ détection HW |
+| Nº alerte + multi-tags + T1–T10 + écran L1–L6 | ✅ v1.12 | ✅ aligné | ✅ aligné |
+| ThinkNode M1 / M2 (`GAULIX_PAGER`) + volume M1 75 % | ✅ | ✅ détection HW | ✅ détection HW |
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
+| Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) |
+| Signalement POI → waypoint Fr_Balise (icônes emoji) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
-| Page / écran Signaler POI | — | ⏳ | ⏳ |
 
 ## Chemins locaux (dev)
 

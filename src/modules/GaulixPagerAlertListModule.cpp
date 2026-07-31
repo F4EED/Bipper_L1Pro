@@ -63,6 +63,9 @@ static const char *historyStatusLabel(const GaulixPagerModule::AlertHistoryEntry
     if (entry.acknowledged) {
         return "Acquittee";
     }
+    if (entry.closedByFin) {
+        return "Cloturee";
+    }
     if (entry.timedOut) {
         return "Expiree";
     }

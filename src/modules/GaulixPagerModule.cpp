@@ -313,6 +313,13 @@ void GaulixPagerModule::recordAlert()
     lastAlertTime = getTime();
 }
 
+void GaulixPagerModule::unrecordAlert()
+{
+    if (alertCount > 0) {
+        alertCount--;
+    }
+}
+
 size_t GaulixPagerModule::getAlertHistoryCount()
 {
     return alertHistoryCount;
@@ -387,6 +394,15 @@ void GaulixPagerModule::markCurrentAlertHistoryTimedOut()
     if (!alertHistory[currentAlertHistoryPhysIdx].acknowledged) {
         alertHistory[currentAlertHistoryPhysIdx].timedOut = true;
     }
+}
+
+void GaulixPagerModule::markCurrentAlertHistoryClosedByFin()
+{
+    if (currentAlertHistoryPhysIdx >= ALERT_HISTORY_MAX) {
+        return;
+    }
+    alertHistory[currentAlertHistoryPhysIdx].closedByFin = true;
+    alertHistory[currentAlertHistoryPhysIdx].timedOut = false;
 }
 
 int GaulixPagerModule::findAlerteChannelIndex()
@@ -1208,6 +1224,11 @@ void GaulixPagerModule::triggerAlert(const char *text, const meshtastic_MeshPack
     alertSourcePacket = mp;
     hasAlertSourcePacket = true;
 
+    // Remplacement d'une alerte encore ouverte : éviter Nb AL. fantôme.
+    if (alertActive) {
+        unrecordAlert();
+    }
+
     recordAlert();
     addAlertHistoryEntry(alertText, mp);
     alertActive = true;
@@ -1271,11 +1292,6 @@ void GaulixPagerModule::sendReplyDm(const meshtastic_MeshPacket &rx, const char 
 
 void GaulixPagerModule::sendAckDm()
 {
-    if (!alertSourceNode || alertSourceNode == NODENUM_BROADCAST) {
-        LOG_WARN("GaulixPager: ACK ignore — source 0x%08x", alertSourceNode);
-        return;
-    }
-
     char timeBuf[20] = "--/-- --:--";
     time_t t = getTime();
     struct tm *tmInfo = localtime(&t);
@@ -1284,7 +1300,13 @@ void GaulixPagerModule::sendAckDm()
     }
 
     char reply[200];
-    int replyLen = snprintf(reply, sizeof(reply), "Pager ACK alerte %s", timeBuf);
+    int replyLen;
+    if (activeAlertId != 0) {
+        replyLen = snprintf(reply, sizeof(reply), "Pager ACK alerte #%lu %s", static_cast<unsigned long>(activeAlertId),
+                            timeBuf);
+    } else {
+        replyLen = snprintf(reply, sizeof(reply), "Pager ACK alerte %s", timeBuf);
+    }
     if (replyLen < 0) {
         return;
     }
@@ -1306,20 +1328,44 @@ void GaulixPagerModule::sendAckDm()
             const double lon = lonI * 1e-7;
             snprintf(reply + replyLen, sizeof(reply) - replyLen, " | %.5f%c %.5f%c", fabs(lat), lat >= 0 ? 'N' : 'S',
                      fabs(lon), lon >= 0 ? 'E' : 'W');
+            replyLen = strnlen(reply, sizeof(reply));
         }
     }
 #endif
 
-    if (hasAlertSourcePacket) {
-        sendReplyDm(alertSourcePacket, reply);
-    } else {
-        meshtastic_MeshPacket ackTarget = meshtastic_MeshPacket_init_zero;
-        ackTarget.which_payload_variant = meshtastic_MeshPacket_decoded_tag;
-        ackTarget.from = alertSourceNode;
-        ackTarget.channel = alertSourceChannel;
-        sendReplyDm(ackTarget, reply);
+    // 1) Broadcast canal Alerte — visible des coordinateurs / Gestion des alertes.
+    const int alerteCh = findAlerteChannelIndex();
+    if (alerteCh >= 0) {
+        meshtastic_MeshPacket *p = allocDataPacket();
+        if (p) {
+            p->to = NODENUM_BROADCAST;
+            p->channel = static_cast<uint8_t>(alerteCh);
+            p->want_ack = false;
+            p->decoded.want_response = false;
+            p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+            const size_t len = strnlen(reply, sizeof(p->decoded.payload.bytes));
+            p->decoded.payload.size = len;
+            memcpy(p->decoded.payload.bytes, reply, len);
+            service->sendToMesh(p, RX_SRC_LOCAL, true);
+            LOG_INFO("GaulixPager: ACK lecture sur canal Alerte ch %d", alerteCh);
+        }
     }
-    LOG_INFO("GaulixPager: ACK vers 0x%08x ch %u", alertSourceNode, alertSourceChannel);
+
+    // 2) DM PKI vers le lanceur — remontée fiable (clients masquent Pager ACK des chats).
+    if (alertSourceNode && alertSourceNode != NODENUM_BROADCAST) {
+        if (hasAlertSourcePacket) {
+            sendReplyDm(alertSourcePacket, reply);
+        } else {
+            meshtastic_MeshPacket ackTarget = meshtastic_MeshPacket_init_zero;
+            ackTarget.which_payload_variant = meshtastic_MeshPacket_decoded_tag;
+            ackTarget.from = alertSourceNode;
+            ackTarget.channel = alertSourceChannel;
+            sendReplyDm(ackTarget, reply);
+        }
+        LOG_INFO("GaulixPager: ACK DM vers lanceur 0x%08x", alertSourceNode);
+    } else if (alerteCh < 0) {
+        LOG_WARN("GaulixPager: ACK ignore — ni canal Alerte ni source");
+    }
 }
 
 void GaulixPagerModule::sendAckPositionOnBalise()
@@ -1444,10 +1490,22 @@ void GaulixPagerModule::clearAlert(bool playFinMelody)
         return;
     }
 
+    // #fin sans alerte active : ignorer (évite bip + décompte fantôme).
+    if (!alertActive && playFinMelody) {
+        LOG_DEBUG("GaulixPager: #fin ignore (aucune alerte active)");
+        return;
+    }
+
     LOG_INFO("GaulixPager: fin d'alerte");
 
     if (alertActive) {
-        markCurrentAlertHistoryTimedOut();
+        if (playFinMelody) {
+            markCurrentAlertHistoryClosedByFin();
+        } else {
+            markCurrentAlertHistoryTimedOut();
+        }
+        // Nb AL. = alertes non clôturées ; -1 saturé à 0 (ACK, #fin ou timeout).
+        unrecordAlert();
     }
 
     alertActive = false;
@@ -1820,7 +1878,8 @@ void GaulixPagerModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *stat
             strftime(timeBuf, sizeof(timeBuf), "%H:%M", tmInfo);
         }
     }
-    snprintf(lineBuf, sizeof(lineBuf), "Nb AL. : %lu | Der. : %s", static_cast<unsigned long>(alertCount), timeBuf);
+    // uint32 saturé via unrecordAlert() — affichage toujours >= 0.
+    snprintf(lineBuf, sizeof(lineBuf), "Nb AL. : %u | Der. : %s", static_cast<unsigned>(alertCount), timeBuf);
     display->drawStringMaxWidth(x + 2, lineY, display->getWidth() - 4, lineBuf);
     lineY += lineStep;
 
