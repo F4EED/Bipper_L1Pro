@@ -189,7 +189,7 @@ La solution reste **auto-hébergeable** au sens mesh : aucun abonnement, aucun s
 | Élément | Spécification |
 |:--------|:--------------|
 | Terminal pager | L1 Pro · ThinkNode M1 · ThinkNode M2 |
-| Radio PC crise | XIAO ESP32-S3 + Wio-SX1262 |
+| Radio PC crise | XIAO ESP32-S3 + Wio-SX1262 · ThinkNode M2 (`thinknode_m2-gaulix`) |
 | Processeur | nRF52840 |
 | Radio | SX1262 (LoRa) |
 | Affichage | OLED SSD1306 |

@@ -35,6 +35,7 @@ Ce checkout est le firmware **Gaulix Bipper** **v1.11.0**. Il évolue **toujours
 | `seeed_wio_tracker_L1_eink` | Pager L1 E-Ink |
 | `thinknode_m1` | Pager ThinkNode M1 |
 | `thinknode_m2` | Pager ThinkNode M2 |
+| `thinknode_m2-gaulix` | PC crise ThinkNode M2 (OLED + client USB / Wi‑Fi / BLE) |
 | `seeed-xiao-s3-gaulix` | PC crise XIAO ESP32-S3 + Wio-SX1262 |
 
 Docs : `docs/ECOSYSTEME-GAULIX.md` · `docs/BIPPER1.md` · règle `.cursor/rules/gaulix-ecosystem-sync.mdc`.

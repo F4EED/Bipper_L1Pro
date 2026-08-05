@@ -1149,9 +1149,9 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
 #endif
 
 #if defined(GAULIX_PC_NODE)
-    // Headless crisis-PC node: same band/channels as Bippers, full mesh participation.
+    // Headless crisis-PC node: same band/channels as Bippers; LOCAL_ONLY (USB client, not a mesh router).
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
-    config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_ALL;
+    config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_LOCAL_ONLY;
     config.bluetooth.fixed_pin = 123456;
     config.bluetooth.mode = meshtastic_Config_BluetoothConfig_PairingMode_FIXED_PIN;
     config.network.wifi_enabled = true;

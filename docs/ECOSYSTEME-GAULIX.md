@@ -23,9 +23,10 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 
 | Matériel | Env PlatformIO | Rôle |
 |:---------|:---------------|:-----|
-| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran, sans GPS UI) — clients web/Android en USB / Wi-Fi / BLE |
+| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran) — clients web/Android en USB / Wi-Fi / BLE |
+| Elecrow ThinkNode M2 | `thinknode_m2-gaulix` | PC crise avec **OLED** (statut Meshtastic) ; pas de UI pager — `thinknode_m2` reste le bipper |
 
-Build : `pio run -e seeed-xiao-s3-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **ALL** + Wi-Fi activé.
+Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **LOCAL_ONLY** + Wi-Fi activé.
 
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
@@ -110,6 +111,7 @@ Config appartenance locale :
 | Nº alerte + multi-tags + T1–T10 + écran L1–L6 | ✅ v1.12 | ✅ aligné | ✅ aligné |
 | ThinkNode M1 / M2 (`GAULIX_PAGER`) + volume M1 75 % | ✅ | ✅ détection HW | ✅ détection HW |
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
+| ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) |
 | Signalement POI → waypoint Fr_Balise (icônes emoji) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |

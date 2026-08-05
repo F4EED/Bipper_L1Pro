@@ -6,7 +6,7 @@
 | **Dépôt local** | `C:\firmware_meshtastic` |
 | **Remote** | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) |
 | **Branche de travail** | `develop` |
-| **Matériels** | L1 Pro · ThinkNode M1/M2 · XIAO S3+SX1262 (PC crise) |
+| **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 / ThinkNode M2 |
 | **Document lié** | [BIPPER1.md](BIPPER1.md) · [ECOSYSTEME-GAULIX.md](ECOSYSTEME-GAULIX.md) |
 
 Ce guide décrit comment reprendre le développement et le flashage des Bippers / PC crise sur une nouvelle machine Windows (32 Go RAM, NVMe, Cursor déjà installé).
@@ -42,7 +42,7 @@ Ce guide décrit comment reprendre le développement et le flashage des Bippers 
 | `src/modules/GaulixPagerAlertListModule.cpp` / `.h` | Historique des 20 dernières alertes |
 | `variants/nrf52840/seeed_wio_tracker_L1/platformio.ini` | Flag `-D GAULIX_PAGER=1` |
 | `variants/nrf52840/ELECROW-ThinkNode-M1/platformio.ini` | Flag `-D GAULIX_PAGER=1` (`thinknode_m1`) |
-| `variants/esp32s3/ELECROW-ThinkNode-M2/platformio.ini` | Flag `-D GAULIX_PAGER=1` (`thinknode_m2`) |
+| `variants/esp32s3/ELECROW-ThinkNode-M2/platformio.ini` | `thinknode_m2` (`GAULIX_PAGER`) · `thinknode_m2-gaulix` (`GAULIX_PC_NODE`) |
 | `variants/esp32s3/seeed_xiao_s3/platformio.ini` | Env `seeed-xiao-s3-gaulix` (`GAULIX_PC_NODE=1`) |
 | `platformio.ini` | `build_dir = C:/pio-build` (contournement chemins longs / verrous Windows) |
 | `src/buzz/buzz.cpp` | Sons Gaulix : pim-pom alerte + `playGaulixLowBatteryBeep()` |
@@ -215,6 +215,7 @@ Le fichier `.vscode/tasks.json` local (s'il existe) peut contenir des tâches de
 | `thinknode_m2` | OLED SH1106 (Elecrow ESP32-S3) | **Oui** (`GAULIX_PAGER=1`) |
 | `seeed_wio_tracker_L1_eink` | E-ink L1 | **Oui** (`GAULIX_PAGER=1`) |
 | `seeed-xiao-s3-gaulix` | aucun (XIAO S3 + Wio-SX1262) | **PC crise** (`GAULIX_PC_NODE=1`) |
+| `thinknode_m2-gaulix` | OLED SH1106 (statut, pas pager) | **PC crise** (`GAULIX_PC_NODE=1`) |
 | `thinknode_m1-inkhud` | InkHUD | **Non** (UI incompatible) |
 | `seeed_wio_tracker_L1_eink-inkhud` | InkHUD | **Non** (UI incompatible) |
 
@@ -456,5 +457,5 @@ Copy-Item C:\pio-build\seeed_wio_tracker_L1\firmware.uf2 D:\
 |:---------|:-------|
 | Protocole | `#alerte [N] texte #E1 #E2` · `#fin N` · T1–T10 |
 | Pagers | L1 Pro · ThinkNode M1 · ThinkNode M2 |
-| PC crise | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`) |
+| PC crise | XIAO S3+SX1262 (`seeed-xiao-s3-gaulix`) · ThinkNode M2 (`thinknode_m2-gaulix`) |
 | Version module | `GAULIX_PAGER_VERSION` = `v1.11.0` |

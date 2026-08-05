@@ -23,8 +23,8 @@ projet: "Réseau Gaulix · Meshtastic"
 | **Document** | Roadmap fonctionnelle et technique |
 | **Version** | 0.1.0 — **Phase 1 livrée (firmware v1.11.0)** |
 | **Date** | 13/07/2026 · maj doc 30/07/2026 |
-| **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 |
-| **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`, `seeed-xiao-s3-gaulix`) |
+| **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 / ThinkNode M2 |
+| **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`, `seeed-xiao-s3-gaulix`, `thinknode_m2-gaulix`) |
 
 </td>
 </tr>
@@ -279,9 +279,10 @@ secours     d'alerte    de crise    mode crise
 | Seeed Wio Tracker L1 Pro | `seeed_wio_tracker_L1` | Pager (référence OLED) |
 | Elecrow ThinkNode M1 | `thinknode_m1` | Pager e-ink |
 | Elecrow ThinkNode M2 | `thinknode_m2` | Pager OLED ESP32-S3 |
+| Elecrow ThinkNode M2 (PC crise) | `thinknode_m2-gaulix` | PC crise client USB / Wi‑Fi / BLE |
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | PC crise (sans écran) |
 
-Builds : `pio run -e seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` · `seeed-xiao-s3-gaulix`.
+Builds : `pio run -e seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` · `seeed-xiao-s3-gaulix` · `thinknode_m2-gaulix`.
 
 ---
 
