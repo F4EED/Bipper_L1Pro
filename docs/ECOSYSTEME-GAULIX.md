@@ -28,6 +28,8 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 
 Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **LOCAL_ONLY** + Wi-Fi activé.
 
+**Client web USB** : nécessite l’API **Web Serial** — utiliser **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
+
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
 ## Versions alignées (juillet 2026)
