@@ -378,7 +378,15 @@ Ressources typiques (L1 Pro) :
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Coordinateur / tête de réseau **sans écran** — clients web/Android en USB / Wi-Fi / BLE |
 | Elecrow ThinkNode M2 | `thinknode_m2-gaulix` | PC crise avec OLED statut ; client USB — `thinknode_m2` reste le bipper alerte |
 
-Nom usine : **Gaulix PC Crise**. Pas de module pager UI (`HAS_SCREEN=0`). Flash : `esptool` (pas UF2).
+Usine (`NodeDB` / `GAULIX_PC_NODE`) :
+
+| Champ | Valeur |
+|:------|:-------|
+| Nom long | **Gaulix PC Crise** |
+| Nom court | **🔴** |
+| UI pager | Non (`HAS_SCREEN=0` sur XIAO ; OLED statut seulement sur M2-gaulix) |
+
+Flash ESP32-S3 : `esptool` (pas UF2). Clients : web/Android **GerMaCrise** — voir `docs/ECOSYSTEME-GAULIX.md`.
 
 ---
 

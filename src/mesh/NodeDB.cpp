@@ -1933,7 +1933,10 @@ void NodeDB::installDefaultDeviceState()
 
     clampLongName(owner.long_name); // vendor userprefs may exceed the local cap
 
-#ifdef USERPREFS_CONFIG_OWNER_SHORT_NAME
+#if defined(GAULIX_PC_NODE)
+    // UTF-8 red circle emoji (4 bytes) — fits User.short_name[5]
+    snprintf(owner.short_name, sizeof(owner.short_name), "%s", "🔴");
+#elif defined(USERPREFS_CONFIG_OWNER_SHORT_NAME)
     snprintf(owner.short_name, sizeof(owner.short_name), (const char *)USERPREFS_CONFIG_OWNER_SHORT_NAME);
 #else
     snprintf(owner.short_name, sizeof(owner.short_name), "%04x", getNodeNum() & 0x0ffff);

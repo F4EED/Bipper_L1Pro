@@ -26,9 +26,19 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran) — clients web/Android en USB / Wi-Fi / BLE |
 | Elecrow ThinkNode M2 | `thinknode_m2-gaulix` | PC crise avec **OLED** (statut Meshtastic) ; pas de UI pager — `thinknode_m2` reste le bipper |
 
-Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`. Nom usine : **Gaulix PC Crise**. Même bande EU868 / canaux Gaulix que les bippers ; rebroadcast **LOCAL_ONLY** + Wi-Fi activé.
+Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`.
 
-**Client web USB** : nécessite l’API **Web Serial** — utiliser **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
+| Champ usine (`GAULIX_PC_NODE`) | Valeur |
+|:-------------------------------|:-------|
+| Nom long | **Gaulix PC Crise** |
+| Nom court | **🔴** (cercle rouge) |
+| Rôle | CLIENT |
+| Rebroadcast | **LOCAL_ONLY** |
+| Radio | EU868 / canaux Gaulix · Wi‑Fi activé |
+
+**Clients GerMaCrise** (web + Android) : icône mesh/télécom/crise orange `#E85D04` ; PWA web `short_name` = **🔴**. Portail : [germacrise.wordpress.com](https://germacrise.wordpress.com/).
+
+**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
