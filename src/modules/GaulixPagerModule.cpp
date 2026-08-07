@@ -281,26 +281,9 @@ void GaulixPagerModule::applyChannelMuteDefaults()
 
 void GaulixPagerModule::ensureGaulixChannelsInstalled()
 {
-    bool hasBalise = false;
-    bool hasAlerte = false;
-    for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
-        const meshtastic_Channel &ch = channels.getByIndex(i);
-        if (!ch.settings.name[0]) {
-            continue;
-        }
-        if (strcmp(ch.settings.name, "Fr_Balise") == 0) {
-            hasBalise = true;
-        }
-        if (strcmp(ch.settings.name, "Alerte") == 0) {
-            hasAlerte = true;
-        }
-    }
-    if (hasBalise && hasAlerte) {
+    if (!channels.ensureGaulixFactoryChannels()) {
         return;
     }
-
-    LOG_INFO("GaulixPager: canaux Gaulix absents — installation des canaux usine");
-    channels.initDefaults();
     applyChannelMuteDefaults();
     if (nodeDB) {
         nodeDB->saveToDisk(SEGMENT_CHANNELS);
@@ -1566,7 +1549,7 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
             entities[0][SERVICE_TAG_VALUE_LEN - 1] = '\0';
             if (!entityTagsMatchMembership(entities, 1)) {
                 LOG_DEBUG("GaulixPager: #fin ignore (appartenance %s)", finAffiliation);
-                return ProcessMessage::STOP;
+                return ProcessMessage::CONTINUE;
             }
         }
         // #fin N : ne clôture que si le nº actif correspond (ou #fin sans Nº = toutes).
@@ -1574,7 +1557,7 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
             if (!alertActive || activeAlertId == 0 || activeAlertId != finAlertId) {
                 LOG_DEBUG("GaulixPager: #fin %lu ignore (actif #%lu)", static_cast<unsigned long>(finAlertId),
                           static_cast<unsigned long>(activeAlertId));
-                return ProcessMessage::STOP;
+                return ProcessMessage::CONTINUE;
             }
         }
         clearAlert(true);
@@ -1613,7 +1596,7 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
                                       &entityCount)) {
         if (!entityTagsMatchMembership(entityTags, entityCount)) {
             LOG_DEBUG("GaulixPager: ignore (aucune entité locale parmi les tags)");
-            return ProcessMessage::STOP;
+            return ProcessMessage::CONTINUE;
         }
         if (kind == PagerCommandKind::Info) {
             triggerInfo(alertBody, mp);
@@ -1621,7 +1604,8 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
             const char *fallback = pagerKindLabel(kind);
             triggerAlert(alertBody[0] ? alertBody : fallback, mp, kind, alertId);
         }
-        return ProcessMessage::STOP;
+        // STOP would swallow the packet before TextMessageModule — keep chat history too.
+        return ProcessMessage::CONTINUE;
     }
 
     if (parseTagSetBulkCommand(buf, true)) {
@@ -1658,19 +1642,21 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
         // Membership is by entity name across any slot (T1–T10), not by alert slot index.
         if (!serviceTagMatches(validator)) {
             LOG_DEBUG("GaulixPager: #T%u %s ignore (pas membre de cette entite)", serviceTag, validator);
-            return ProcessMessage::STOP;
+            return ProcessMessage::CONTINUE;
         }
         triggerAlert(tagAlertText, mp, PagerCommandKind::Alerte, 0);
-        return ProcessMessage::STOP;
+        return ProcessMessage::CONTINUE;
     }
 
     if (isInvalidServiceTagAlert(buf)) {
         LOG_DEBUG("GaulixPager: tag T inconnu ou invalide, ignore");
-        return ProcessMessage::STOP;
+        return ProcessMessage::CONTINUE;
     }
 
-    LOG_DEBUG("GaulixPager: message non reconnu, ignore");
-    return ProcessMessage::STOP;
+    // Not a pager command — do NOT STOP: GaulixPager is registered before TextMessageModule,
+    // so STOP made channel/DM chat from PC crise (M2) invisible on the bipper.
+    LOG_DEBUG("GaulixPager: message non reconnu, passe au chat");
+    return ProcessMessage::CONTINUE;
 }
 
 int GaulixPagerModule::handleInputEvent(const InputEvent *event)

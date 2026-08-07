@@ -11,7 +11,9 @@
 #include "graphics/Screen.h"
 #include "graphics/TimeFormatters.h"
 #include "graphics/draw/NodeListRenderer.h"
+#include "graphics/draw/UIRenderer.h"
 #include "main.h"
+#include <climits>
 #endif
 
 WaypointModule *waypointModule;
@@ -60,7 +62,7 @@ bool WaypointModule::shouldDraw()
     meshtastic_Waypoint wp{}; // <- replaces memset
     if (pb_decode_from_bytes(devicestate.rx_waypoint.decoded.payload.bytes, devicestate.rx_waypoint.decoded.payload.size,
                              &meshtastic_Waypoint_msg, &wp)) {
-        return wp.expire > getTime();
+        return wp.expire == 0 || wp.expire == INT32_MAX || wp.expire > getTime();
     }
     return false; // no LOG_ERROR, no flag writes
 #else
@@ -213,8 +215,9 @@ void WaypointModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *state, 
 
     display->setTextAlignment(TEXT_ALIGN_LEFT); // Something above me changes to a different alignment, forcing a fix here!
     display->drawString(0, textPos[line++], lastStr);
-    display->drawString(0, textPos[line++], wp.name);
-    display->drawString(0, textPos[line++], wp.description);
+    // Name/description often embed emoji; use emote renderer so they show on OLED/E-Ink.
+    graphics::UIRenderer::drawStringWithEmotes(display, 0, textPos[line++], wp.name, FONT_HEIGHT_SMALL, 1, false);
+    graphics::UIRenderer::drawStringWithEmotes(display, 0, textPos[line++], wp.description, FONT_HEIGHT_SMALL, 1, false);
     if (distStr[0])
         display->drawString(0, textPos[line++], distStr);
 }

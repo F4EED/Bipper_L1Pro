@@ -35,8 +35,31 @@ Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`.
 | Rôle | CLIENT |
 | Rebroadcast | **LOCAL_ONLY** |
 | Radio | EU868 / canaux Gaulix · Wi‑Fi activé |
+| MQTT | **non** (rôle client USB/Wi‑Fi/BLE) — uplink broker via **passerelle MQTT dédiée** |
 
 **Clients GerMaCrise** (web + Android) : icône mesh/télécom/crise orange `#E85D04` ; PWA web `short_name` = **🔴**. Portail : [germacrise.wordpress.com](https://germacrise.wordpress.com/).
+
+### Signalement GerMaCrise — objets Alerte + Fr_Balise
+
+Tous les boutons **Signalement** (web `/alerts`, Android GerMaCrise) envoient un **waypoint** (`PortNum.WAYPOINT_APP` = 8), GPS obligatoire, priorité mesh **`ALERT`** (110), en **double émission** :
+
+1. **Alerte** (canal **7**) — pager / MQTT Gaulix  
+2. **Fr_Balise** (canal **0**) — objets carte / mesh balises
+
+Catégories UI (Routes / Status / SDIS / Secourisme / Crise / ADRASEC) : matrice Excel GerMaCrise (boutons multi-onglets) — même payload waypoint, seul le libellé / icône change.
+
+Uplink MQTT : le **PC crise** (`GAULIX_PC_NODE`) n’active pas MQTT en usine. Une **passerelle MQTT dédiée** (autre nœud mesh avec Wi‑Fi + `module.mqtt.enabled`) doit entendre le LoRa et uplinker — voir checklist.
+
+### Checklist diagnostic MQTT (passerelle dédiée)
+
+Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
+
+1. **`module.mqtt.enabled` = true** + adresse / identifiants broker corrects.
+2. **Wi‑Fi / lien broker** — SSID joignable ; éventuellement `proxy_to_client_enabled` si le client fournit le lien.
+3. **Portée LoRa** — la passerelle doit recevoir les paquets Fr_Balise / Alerte émis depuis le PC crise ou les bippers.
+4. **Uplink canaux** — `Alerte` (waypoints signalement + pager) : `settings.uplink_enabled` (usine Gaulix : oui via `USERPREFS_CHANNEL_*_UPLINK_ENABLED`).
+5. **`config.lora.config_ok_to_mqtt`** sur l’émetteur — usine Gaulix `true` ; sinon un broker public peut filtrer (`DontMqttMeBro`).
+6. **Test** — envoyer **Incendie** (waypoint Alerte) puis vérifier topic MQTT / logs série de la passerelle `MQTT onSend - Publish`.
 
 **Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
@@ -46,11 +69,11 @@ Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`.
 
 | Composant | Version / état |
 |:----------|:---------------|
-| Firmware pager | **v1.12.1** (`GAULIX_PAGER_VERSION`) |
+| Firmware pager | **v1.12.3** (`GAULIX_PAGER_VERSION`) |
 | Protocole filaire | `#alerte\|#secours\|#vigilance\|#info [N] <texte> [#entité…]` · `#fin [N] [#entité]` |
 | ACK lecture | `Pager ACK alerte [#N] …` en **broadcast canal Alerte** (plus de DM PKI → Fr_BlaBla/Primary) |
-| Canal alertes | **Alerte** (index 7 usine) |
-| Canal SOS / ACK / waypoints signalement | **Fr_Balise** |
+| Canal alertes + waypoints signalement | **Alerte** (7) + **Fr_Balise** (0) — double TX PortNum 8 |
+| Canal SOS / position ACK GPS | **Fr_Balise** |
 | Tags service (appartenance) | **T1–T10** |
 | Multi-entités | Plusieurs `#entité` = **OU** |
 | Nº d’alerte | Optionnel ; `#fin N` clôture uniquement N |
@@ -125,7 +148,7 @@ Config appartenance locale :
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) |
-| Signalement POI → waypoint Fr_Balise (icônes emoji) | — | ✅ onglet + carte | ✅ onglet + carte |
+| Signalement POI → waypoint Alerte (icônes emoji) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 
 ## Chemins locaux (dev)

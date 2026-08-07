@@ -356,6 +356,32 @@ void Channels::initDefaults()
 #endif
 }
 
+#if defined(GAULIX_PAGER) || defined(GAULIX_PC_NODE)
+bool Channels::ensureGaulixFactoryChannels()
+{
+    bool hasBalise = false;
+    bool hasAlerte = false;
+    for (ChannelIndex i = 0; i < MAX_NUM_CHANNELS; i++) {
+        const meshtastic_Channel &ch = getByIndex(i);
+        if (!ch.settings.name[0]) {
+            continue;
+        }
+        if (strcmp(ch.settings.name, "Fr_Balise") == 0) {
+            hasBalise = true;
+        }
+        if (strcmp(ch.settings.name, "Alerte") == 0) {
+            hasAlerte = true;
+        }
+    }
+    if (hasBalise && hasAlerte) {
+        return false;
+    }
+    LOG_INFO("Gaulix: canaux usine absents — installation Fr_Balise / Alerte");
+    initDefaults();
+    return true;
+}
+#endif
+
 void Channels::onConfigChanged()
 {
     // Make sure the phone hasn't mucked anything up

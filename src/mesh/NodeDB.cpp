@@ -2414,10 +2414,22 @@ void NodeDB::loadFromDisk()
     if (!configDecodeFailed)
         config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
     if (!configDecodeFailed) {
+        config.lora.tx_enabled = true;
         config.device.buzzer_mode = meshtastic_Config_DeviceConfig_BuzzerMode_ALL_ENABLED;
 #if defined(PIN_BUZZER)
         config.device.buzzer_gpio = PIN_BUZZER;
 #endif
+    }
+#endif
+
+#if defined(GAULIX_PC_NODE)
+    // PC crise: keep CLIENT (not CLIENT_MUTE from shared userPrefs) and ensure Alerte/Fr_Balise exist.
+    if (!configDecodeFailed) {
+        config.device.role = meshtastic_Config_DeviceConfig_Role_CLIENT;
+        config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_LOCAL_ONLY;
+        if (channels.ensureGaulixFactoryChannels()) {
+            saveToDisk(SEGMENT_CHANNELS);
+        }
     }
 #endif
 

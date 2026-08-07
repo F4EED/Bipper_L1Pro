@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.12.2"
+#define GAULIX_PAGER_VERSION "v1.12.4"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 #define GAULIX_DEFAULT_SERVICE_TAG_T1 "all"

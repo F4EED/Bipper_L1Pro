@@ -64,6 +64,11 @@ class Channels
     /// Called by NodeDB on initial boot when the radio config settings are unset.  Set a default single channel config.
     void initDefaults();
 
+#if defined(GAULIX_PAGER) || defined(GAULIX_PC_NODE)
+    /** Install Gaulix factory channels (Fr_Balise… + Alerte) if missing. Returns true if channels were rewritten. */
+    bool ensureGaulixFactoryChannels();
+#endif
+
     /// called when the user has just changed our radio config and we might need to change channel keys
     void onConfigChanged();
 
