@@ -39,6 +39,8 @@ Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`.
 
 **Clients GerMaCrise** (web + Android) : icône mesh/télécom/crise orange `#E85D04` ; PWA web `short_name` = **🔴**. Portail : [germacrise.wordpress.com](https://germacrise.wordpress.com/).
 
+**App Android** (`org.germacrise.app`, minSdk 26) : coexiste avec Meshtastic officiel. Install APK / dépannage (« Application non installée », Crosscall Core-X4 Android 10, `adb install`) → Android [`docs/BIPPER-ANDROID.md`](https://github.com/F4EED/bipper_android/blob/main/docs/BIPPER-ANDROID.md#installation-sur-téléphone).
+
 ### Signalement GerMaCrise — objets Alerte + Fr_Balise
 
 Tous les boutons **Signalement** (web `/alerts`, Android GerMaCrise) envoient un **waypoint** (`PortNum.WAYPOINT_APP` = 8), GPS obligatoire, priorité mesh **`ALERT`** (110), en **double émission** :
