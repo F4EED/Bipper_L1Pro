@@ -5,7 +5,7 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Brique | Dépôt | Chemin local | Doc principale |
 |:-------|:------|:-------------|:---------------|
 | **Firmware** (Bipper) | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) | `C:\firmware_meshtastic` | [BIPPER1.md](BIPPER1.md) |
-| **Client web** | [F4EED/client_web_MT_bipper](https://github.com/F4EED/client_web_MT_bipper) | `C:\client web mesthastic_bipper` | `docs/BIPPER-WEB.md` |
+| **Client web** | [F4EED/client_web_MT_bipper](https://github.com/F4EED/client_web_MT_bipper) | `C:\client web mesthastic_bipper` | `docs/BIPPER-WEB.md` · install PC : [`docs/install_local.md`](https://github.com/F4EED/client_web_MT_bipper/blob/main/docs/install_local.md) |
 | **App Android** | [F4EED/bipper_android](https://github.com/F4EED/bipper_android) | `C:\bipper_android` | `docs/BIPPER-ANDROID.md` |
 
 ## Matériels pager supportés (`GAULIX_PAGER=1`)
