@@ -48,7 +48,7 @@ Tous les boutons **Signalement** (web `/alerts`, Android GerMaCrise) envoient un
 1. **Alerte** (canal **7**) — pager / MQTT Gaulix  
 2. **Fr_Balise** (canal **0**) — objets carte / mesh balises
 
-Catégories UI (Routes / Status / SDIS / Secourisme / Crise / ADRASEC) : matrice Excel GerMaCrise (boutons multi-onglets) — même payload waypoint, seul le libellé / icône change.
+Catégories UI (Routes / Status / SDIS / Météo / Secourisme / Crise / ADRASEC) : matrice Excel GerMaCrise + lot Météo — même payload waypoint, seul le libellé / icône change.
 
 Uplink MQTT : le **PC crise** (`GAULIX_PC_NODE`) n’active pas MQTT en usine. Une **passerelle MQTT dédiée** (autre nœud mesh avec Wi‑Fi + `module.mqtt.enabled`) doit entendre le LoRa et uplinker — voir checklist.
 
@@ -151,7 +151,7 @@ Config appartenance locale :
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) |
-| Signalement POI → waypoint Alerte (icônes emoji) | — | ✅ onglet + carte | ✅ onglet + carte |
+| Signalement POI → waypoint Alerte+Fr_Balise (dont Météo) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 
 ## Chemins locaux (dev)
