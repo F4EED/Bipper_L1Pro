@@ -59,9 +59,10 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 1. **`module.mqtt.enabled` = true** + adresse / identifiants broker corrects.
 2. **Wi‑Fi / lien broker** — SSID joignable ; éventuellement `proxy_to_client_enabled` si le client fournit le lien.
 3. **Portée LoRa** — la passerelle doit recevoir les paquets Fr_Balise / Alerte émis depuis le PC crise ou les bippers.
-4. **Uplink canaux** — `Alerte` (waypoints signalement + pager) : `settings.uplink_enabled` (usine Gaulix : oui via `USERPREFS_CHANNEL_*_UPLINK_ENABLED`).
+4. **Uplink canaux** — `Alerte` **et** `Fr_Balise` : `settings.uplink_enabled` (usine Gaulix : oui via `USERPREFS_CHANNEL_*_UPLINK_ENABLED`).
 5. **`config.lora.config_ok_to_mqtt`** sur l’émetteur — usine Gaulix `true` ; sinon un broker public peut filtrer (`DontMqttMeBro`).
-6. **Test** — envoyer **Incendie** (waypoint Alerte) puis vérifier topic MQTT / logs série de la passerelle `MQTT onSend - Publish`.
+6. **Test** — signalement GerMaCrise → topics MQTT `…/2/e/Fr_Balise/…` **et** `…/2/e/Alerte/…` ; logs série passerelle `MQTT onSend - Publish`.
+7. **Distance France** — un ami hors portée LoRa ne reçoit **que** via MQTT (passerelle). Si seul `Alerte` apparaît : souvent uplink MQTT du **Primary (Fr_Balise = ch0)** défaillant en Wi‑Fi (bug Meshtastic historique) alors que le secondaire **Alerte (7)** passe. Vérifier LoRa local sur Fr_Balise avant d’incriminer le smartphone.
 
 **Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
