@@ -150,7 +150,7 @@ Config appartenance locale :
 | ThinkNode M1 / M2 (`GAULIX_PAGER`) + volume M1 75 % | ✅ | ✅ détection HW | ✅ détection HW |
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
-| Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) |
+| Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) + réception type FR-Alerte (son / overlay / ACK « J'ai pris connaissance ») |
 | Signalement POI → waypoint Alerte+Fr_Balise (dont Météo) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 
