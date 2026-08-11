@@ -159,6 +159,7 @@ Config appartenance locale :
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) + RX FR-Alerte |
 | Réception téléphone : Morse SOS + `#ack` (= bouton bip) | ✅ `#ack` v1.12.5 | — (pas de RX alarme) | ✅ Morse SOS anxiogène + `#ack` / DM émetteur |
+| Isolation fils Messages par canal (Fr_*) | LoRa hash | ✅ dédup OPFS v3 (si doublons UI → Ctrl+F5) | ✅ référence USB |
 | Signalement POI → waypoint Alerte+Fr_Balise (dont Météo) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 
