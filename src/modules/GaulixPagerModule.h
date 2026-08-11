@@ -10,7 +10,7 @@
 #include "input/InputBroker.h"
 #include "mesh/MeshTypes.h"
 
-#define GAULIX_PAGER_VERSION "v1.12.4"
+#define GAULIX_PAGER_VERSION "v1.12.5"
 #define GAULIX_PAGER_TITLE "Bipper Gaulix " GAULIX_PAGER_VERSION
 #define GAULIX_DEFAULT_ACTIVATION_CODE "GAULIX"
 #define GAULIX_DEFAULT_SERVICE_TAG_T1 "all"
@@ -117,6 +117,7 @@ class GaulixPagerModule : public SinglePortModule, private concurrency::OSThread
     static bool parseFinCommand(const char *msg);
     static bool parseFinCommandEx(const char *msg, uint32_t *outAlertId, char *outAffiliation, size_t affiliationLen);
     static bool parseStatusCommand(const char *msg);
+    static bool parseAckCommand(const char *msg);
     static bool parseBeepCommand(const char *msg, uint8_t *outCount);
     static bool parseCodeCommand(const char *msg, char *oldCode, size_t oldLen, char *newCode, size_t newLen);
     static bool parseAlertWithText(const char *msg, const char *keyword, const char **outText);

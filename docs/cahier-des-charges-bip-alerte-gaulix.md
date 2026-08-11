@@ -3,7 +3,7 @@ title: "Cahier des charges — Bip alerte Gaulix"
 version: "0.1.0"
 date: "13/07/2026"
 author: "Réseau Gaulix"
-status: "Implémenté — firmware v1.11.0 (nº alerte, multi-entités T1–T10, multi-matériels)"
+status: "Implémenté — firmware v1.12.5 (nº alerte, multi-entités T1–T10, `#ack`, multi-matériels)"
 ---
 
 <table>
@@ -21,7 +21,7 @@ status: "Implémenté — firmware v1.11.0 (nº alerte, multi-entités T1–T10,
 | | |
 |:--|:--|
 | **Document** | Cahier des charges Bip alerte — Réseau Gaulix |
-| **Version** | 0.1.0 (spec) / firmware **v1.11.0** |
+| **Version** | 0.1.0 (spec) / firmware **v1.12.5** |
 | **Date** | 13/07/2026 (spec) · maj doc 30/07/2026 |
 | **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 |
 
@@ -183,6 +183,7 @@ La solution reste **auto-hébergeable** au sens mesh : aucun abonnement, aucun s
 | `#b <n>` | Enregistre réglage NVS (legacy) | `#b 5` |
 | `#code <ancien> <nouveau>` | Change le code d'activation | `#code GAULIX GAULIX26` |
 | `#status` | État du pager | `#status` |
+| `#ack` | ACK lecture (= appui bouton) — DM local client | `#ack` |
 
 ### B — Matériel cible V1
 

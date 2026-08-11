@@ -415,6 +415,9 @@ bool GaulixPagerModule::isLocalConfigCommand(const char *msg)
     if (parseStatusCommand(msg)) {
         return true;
     }
+    if (parseAckCommand(msg)) {
+        return true;
+    }
     uint8_t beepCount = 0;
     if (parseBeepCommand(msg, &beepCount)) {
         return true;
@@ -589,6 +592,16 @@ bool GaulixPagerModule::parseStatusCommand(const char *msg)
         return false;
     }
     return strncmp(msg, "#status", 7) == 0 && (msg[7] == '\0' || std::isspace(static_cast<unsigned char>(msg[7])));
+}
+
+bool GaulixPagerModule::parseAckCommand(const char *msg)
+{
+    msg = skipSpaces(msg);
+    if (!msg) {
+        return false;
+    }
+    // Local phone ACK — same effect as center / user button (acknowledgeAlert).
+    return strncmp(msg, "#ack", 4) == 0 && (msg[4] == '\0' || std::isspace(static_cast<unsigned char>(msg[4])));
 }
 
 bool GaulixPagerModule::parseBeepCommand(const char *msg, uint8_t *outCount)
@@ -923,7 +936,7 @@ bool GaulixPagerModule::isReservedEntityHashtag(const char *name)
         return true;
     }
     static const char *const kReserved[] = {
-        "alerte", "secours", "info", "vigilance", "fin", "b", "code", "status", "tagval", "tagset", "tag",
+        "alerte", "secours", "info", "vigilance", "fin", "b", "code", "status", "ack", "tagval", "tagset", "tag",
         "T1",     "T2",      "T3",   "T4",        "T5",  "T6", "T7",   "T8",     "T9",     "T10"};
     for (const char *r : kReserved) {
         if (strcasecmp(name, r) == 0) {
@@ -1566,6 +1579,17 @@ ProcessMessage GaulixPagerModule::handleReceived(const meshtastic_MeshPacket &mp
 
     if (parseStatusCommand(buf)) {
         sendStatusReply(mp);
+        return ProcessMessage::STOP;
+    }
+
+    if (parseAckCommand(buf)) {
+        // Phone "J'ai pris connaissance" → same path as physical button.
+        if (alertActive) {
+            acknowledgeAlert();
+            LOG_INFO("GaulixPager: #ack local — simule appui bouton");
+        } else {
+            LOG_DEBUG("GaulixPager: #ack ignore (aucune alerte active)");
+        }
         return ProcessMessage::STOP;
     }
 

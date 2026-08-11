@@ -21,7 +21,7 @@ projet: "Réseau Gaulix · Meshtastic"
 | | |
 |:--|:--|
 | **Document** | Roadmap fonctionnelle et technique |
-| **Version** | 0.1.0 — **Phase 1 livrée (firmware v1.11.0)** |
+| **Version** | 0.1.0 — **Phase 1 livrée (firmware v1.12.5)** |
 | **Date** | 13/07/2026 · maj doc 30/07/2026 |
 | **Matériels** | L1 Pro · ThinkNode M1/M2 · PC crise XIAO S3+SX1262 / ThinkNode M2 |
 | **Stack** | Firmware Meshtastic (`seeed_wio_tracker_L1`, `thinknode_m1`, `thinknode_m2`, `seeed-xiao-s3-gaulix`, `thinknode_m2-gaulix`) |
@@ -139,7 +139,7 @@ secours     d'alerte    de crise    mode crise
 
 ### Phase 1 — Pager secours Gaulix *(implémentée — v1.6)*
 
-**Objectif :** livrer un bippeur d'alerte opérationnel (L1 Pro et variantes pager). **Statut : livré en firmware v1.11.0** (juillet 2026).
+**Objectif :** livrer un bippeur d'alerte opérationnel (L1 Pro et variantes pager). **Statut : livré en firmware v1.12.5** (août 2026).
 
 #### Déclenchement
 
@@ -177,6 +177,7 @@ secours     d'alerte    de crise    mode crise
 | `#b <n>` | NVS legacy *(n'affecte plus le son)* |
 | `#code <ancien> <nouveau>` | Code d'activation |
 | `#status` | État du pager |
+| `#ack` | ACK lecture (= appui bouton) — DM local client téléphone |
 
 #### Sécurités
 
@@ -296,7 +297,7 @@ Builds : `pio run -e seeed_wio_tracker_L1` · `thinknode_m1` · `thinknode_m2` �
 | Réseau ? | **Gaulix**, presets Meshtastic EU868 standards |
 | Émission alertes ? | **Client web** `/alerts` ou **app Android** Gaulix_bipper |
 | Code d'activation ? | `GAULIX` par défaut — modifiable via `#code` |
-| Premier livrable ? | Firmware v1.11.0 ✅ — fiche réflexe ⏳ |
+| Premier livrable ? | Firmware v1.12.5 ✅ — fiche réflexe ⏳ |
 
 ---
 

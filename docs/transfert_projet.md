@@ -449,13 +449,14 @@ Copy-Item C:\pio-build\seeed_wio_tracker_L1\firmware.uf2 D:\
 
 ---
 
-*Dernière mise à jour : 30/07/2026 — Gaulix Bipper **v1.11.0** (branche `develop`).*
+*Dernière mise à jour : 11/08/2026 — Gaulix Bipper **v1.12.5** (branche `develop`).*
 
-### Nouveautés v1.11 (résumé)
+### Nouveautés v1.12.5 (résumé)
 
 | Fonction | Détail |
 |:---------|:-------|
-| Protocole | `#alerte [N] texte #E1 #E2` · `#fin N` · T1–T10 |
-| Pagers | L1 Pro · ThinkNode M1 · ThinkNode M2 |
+| Protocole | `#alerte [N] texte #E1 #E2` · `#fin N` · T1–T10 · **`#ack`** (ACK lecture = bouton) |
+| Pagers | L1 Pro · L1 E-Ink · ThinkNode M1 · ThinkNode M2 |
 | PC crise | XIAO S3+SX1262 (`seeed-xiao-s3-gaulix`) · ThinkNode M2 (`thinknode_m2-gaulix`) |
-| Version module | `GAULIX_PAGER_VERSION` = `v1.11.0` |
+| Version module | `GAULIX_PAGER_VERSION` = `v1.12.5` |
+| Clients | Android Morse SOS + `#ack` · web parsing ACK v1.12 |

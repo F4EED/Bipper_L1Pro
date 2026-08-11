@@ -26,19 +26,22 @@ Ordre typique :
 3. **Client Android** — composeur + settings (miroir Kotlin/KMP du même format)
 4. **Docs** — `docs/ECOSYSTEME-GAULIX.md` (firmware) + `docs/BIPPER-WEB.md` + `docs/BIPPER-ANDROID.md` + sections protocole dans `BIPPER1.md`
 
-## Protocole filaire courant (v1.12+)
+## Protocole filaire courant (v1.12.5+)
 
 ```text
 #alerte|#secours|#vigilance|#info [N] <texte> [#entité…]
 #fin [N] [#entité]
 Pager ACK alerte [#N] JJ/MM HH:MM[ — texte][ | lat lon]
+#ack
 ```
 
 - `N` = numéro d’alerte (optionnel) ; `#fin N` ne clôture que l’alerte N
 - Plusieurs `#entité` = **OU** (membership T1–T10)
 - Sans `#entité` = broadcast tous bippers
 - Slots d’appartenance : **T1–T10** (`#tagset` / `#tagval`)
-- ACK lecture / waypoints signalement → canal **Fr_Balise** (position / POI)
+- ACK lecture : broadcast canal **Alerte** + DM émetteur ; position / waypoints → **Fr_Balise**
+- `#ack` (DM local client → bip) = même effet que l’appui bouton (`acknowledgeAlert`)
+- Android RX : Morse **SOS SOS** anxiogène ; ACK app → `#ack` si bipper connecté
 
 ## Matériels Gaulix
 

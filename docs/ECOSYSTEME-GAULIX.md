@@ -24,14 +24,15 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Matériel | Env PlatformIO | Rôle |
 |:---------|:---------------|:-----|
 | Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-gaulix` | Radio tête de réseau / coordinateur (sans écran) — clients web/Android en USB / Wi-Fi / BLE |
+| Seeed XIAO ESP32-S3 + Wio-SX1262 | `seeed-xiao-s3-pilote` | **Pilote Biper** — mêmes canaux/LoRa que les bippers ; nom usine *Pilote Biper* / *PB* |
 | Elecrow ThinkNode M2 | `thinknode_m2-gaulix` | PC crise avec **OLED** (statut Meshtastic) ; pas de UI pager — `thinknode_m2` reste le bipper |
 
-Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e thinknode_m2-gaulix`.
+Builds : `pio run -e seeed-xiao-s3-gaulix` · `pio run -e seeed-xiao-s3-pilote` · `pio run -e thinknode_m2-gaulix`.
 
 | Champ usine (`GAULIX_PC_NODE`) | Valeur |
 |:-------------------------------|:-------|
-| Nom long | **Gaulix PC Crise** |
-| Nom court | **🔴** (cercle rouge) |
+| Nom long | **Gaulix PC Crise** (ou **Pilote Biper** sur env `seeed-xiao-s3-pilote`) |
+| Nom court | **🔴** (ou **PB** sur pilote) |
 | Rôle | CLIENT |
 | Rebroadcast | **LOCAL_ONLY** |
 | Radio | EU868 / canaux Gaulix · Wi‑Fi activé |
@@ -66,15 +67,17 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 
 **Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
+**Horloge radio (RTC)** : dès la fin du handshake, web et Android envoient `AdminMessage.set_time_only` (heure PC/téléphone). Firmware Gaulix : `perhapsSetRTC(..., forceUpdate=true)` — l’heure client **écrase** toujours GPS/NTP déjà présents (sinon JJ/MM HH:MM des ACK pager reste faux).
+
 > **Règle projet** : firmware, web et Android **évoluent ensemble** (protocole, tags, docs). Voir `.cursor/rules/gaulix-ecosystem-sync.mdc` dans chaque dépôt.
 
-## Versions alignées (juillet 2026)
+## Versions alignées (août 2026)
 
 | Composant | Version / état |
 |:----------|:---------------|
-| Firmware pager | **v1.12.3** (`GAULIX_PAGER_VERSION`) |
-| Protocole filaire | `#alerte\|#secours\|#vigilance\|#info [N] <texte> [#entité…]` · `#fin [N] [#entité]` |
-| ACK lecture | `Pager ACK alerte [#N] …` en **broadcast canal Alerte** (plus de DM PKI → Fr_BlaBla/Primary) |
+| Firmware pager | **v1.12.5** (`GAULIX_PAGER_VERSION`) |
+| Protocole filaire | `#alerte\|#secours\|#vigilance\|#info [N] <texte> [#entité…]` · `#fin [N] [#entité]` · `#ack` (local) |
+| ACK lecture | `Pager ACK alerte [#N] …` en **broadcast canal Alerte** + **DM PKI vers l’émetteur** ; déclenché par bouton bip **ou** `#ack` (client téléphone ≥ Android GerMaCrise) |
 | Canal alertes + waypoints signalement | **Alerte** (7) + **Fr_Balise** (0) — double TX PortNum 8 |
 | Canal SOS / position ACK GPS | **Fr_Balise** |
 | Tags service (appartenance) | **T1–T10** |
@@ -82,6 +85,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 | Nº d’alerte | Optionnel ; `#fin N` clôture uniquement N |
 | Nb AL. (écran) | Alertes non clôturées ; −1 saturé à 0 (#fin / ACK / timeout) |
 | ThinkNode M1 buzzer | PWM duty **75 %** (`GAULIX_BUZZER_DUTY`) |
+| Android RX alerte | Morse **SOS SOS** anxiogène + sirène ; `#ack` → `acknowledgeAlert()` |
 
 ## Format filaire (source de vérité)
 
@@ -111,7 +115,10 @@ Config appartenance locale :
 #tagset T1=SDIS42,T2=DEPT42,T3=Test,T4=UDIOM42,T5=,T6=,T7=,T8=,T9=,T10=
 #tagval 3 Ricamarie
 #status
+#ack
 ```
+
+`#ack` (DM local téléphone → bip) : même effet que l’appui bouton (« J'ai pris connaissance ») — `acknowledgeAlert()` (broadcast Alerte + DM émetteur + coupe buzzer + position Fr_Balise). Firmware **≥ v1.12.5**.
 
 ## Écran alerte Bipper (v1.12)
 
@@ -139,7 +146,7 @@ Config appartenance locale :
 1. Le coordinateur compose l’alerte (web ou Android) avec nº + multi-tags.
 2. Le message part sur le canal **Alerte** (ou en DM).
 3. Chaque Bipper filtre whitelist + appartenance T1–T10 (OU).
-4. Son pim-pom + écran L1–L6 ; acquittement ; ACK (+ position sur Fr_Balise).
+4. Son pim-pom + écran L1–L6 ; acquittement (bouton **ou** `#ack` client) ; ACK (+ position sur Fr_Balise).
 5. Clôture distante : `#fin N`.
 
 ## Roadmap commune (prochaine)
@@ -150,7 +157,8 @@ Config appartenance locale :
 | ThinkNode M1 / M2 (`GAULIX_PAGER`) + volume M1 75 % | ✅ | ✅ détection HW | ✅ détection HW |
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
-| Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) + réception type FR-Alerte (son / overlay / ACK « J'ai pris connaissance ») |
+| Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) + RX FR-Alerte |
+| Réception téléphone : Morse SOS + `#ack` (= bouton bip) | ✅ `#ack` v1.12.5 | — (pas de RX alarme) | ✅ Morse SOS anxiogène + `#ack` / DM émetteur |
 | Signalement POI → waypoint Alerte+Fr_Balise (dont Météo) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
 
