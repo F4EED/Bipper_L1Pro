@@ -5,7 +5,7 @@ Vue d’ensemble des trois briques du projet **pager d’alerte secours** Gaulix
 | Brique | Dépôt | Chemin local | Doc principale |
 |:-------|:------|:-------------|:---------------|
 | **Firmware** (Bipper) | [F4EED/Bipper_L1Pro](https://github.com/F4EED/Bipper_L1Pro) | `C:\firmware_meshtastic` | [BIPPER1.md](BIPPER1.md) |
-| **Client web** | [F4EED/client_web_MT_bipper](https://github.com/F4EED/client_web_MT_bipper) | `C:\client web mesthastic_bipper` | `docs/BIPPER-WEB.md` · install PC : [`docs/install_local.md`](https://github.com/F4EED/client_web_MT_bipper/blob/main/docs/install_local.md) |
+| **Client web** | [F4EED/client_web_MT_bipper](https://github.com/F4EED/client_web_MT_bipper) | `C:\client web mesthastic_bipper` | `docs/BIPPER-WEB.md` · PC : Debian/Ubuntu `install.sh` · Windows 10/11 `install.ps1` ([install_local.md](https://github.com/F4EED/client_web_MT_bipper/blob/main/docs/install_local.md)) |
 | **App Android** | [F4EED/bipper_android](https://github.com/F4EED/bipper_android) | `C:\bipper_android` | `docs/BIPPER-ANDROID.md` |
 
 ## Matériels pager supportés (`GAULIX_PAGER=1`)
@@ -65,7 +65,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 6. **Test** — signalement GerMaCrise → topics MQTT `…/2/e/Fr_Balise/…` **et** `…/2/e/Alerte/…` ; logs série passerelle `MQTT onSend - Publish`.
 7. **Distance France** — un ami hors portée LoRa ne reçoit **que** via MQTT (passerelle). Si seul `Alerte` apparaît : souvent uplink MQTT du **Primary (Fr_Balise = ch0)** défaillant en Wi‑Fi (bug Meshtastic historique) alors que le secondaire **Alerte (7)** passe. Vérifier LoRa local sur Fr_Balise avant d’incriminer le smartphone.
 
-**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
+**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). **BLE Linux** : Chrome/Chromium (flag Web Bluetooth, pas le Snap) ou Firefox + extension WebBLE — le sélecteur liste tous les appareils BLE (BlueZ n’annonce souvent pas l’UUID GATT). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
 **Horloge radio (RTC)** : dès la fin du handshake, web et Android envoient `AdminMessage.set_time_only` (heure PC/téléphone). Firmware Gaulix : `perhapsSetRTC(..., forceUpdate=true)` — l’heure client **écrase** toujours GPS/NTP déjà présents (sinon JJ/MM HH:MM des ACK pager reste faux).
 
@@ -85,7 +85,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 | Nº d’alerte | Optionnel ; `#fin N` clôture uniquement N |
 | Nb AL. (écran) | Alertes non clôturées ; −1 saturé à 0 (#fin / ACK / timeout) |
 | ThinkNode M1 buzzer | PWM duty **75 %** (`GAULIX_BUZZER_DUTY`) |
-| Android RX alerte | Morse **SOS SOS** anxiogène + sirène ; `#ack` → `acknowledgeAlert()` |
+| Android RX alerte | Morse **SOS SOS** anxiogène + sirène US/SAMU (wail/yelp) + vibreur ; `#ack` → `acknowledgeAlert()` |
 
 ## Format filaire (source de vérité)
 
@@ -158,7 +158,7 @@ Config appartenance locale :
 | XIAO ESP32-S3 + Wio-SX1262 (`seeed-xiao-s3-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | ThinkNode M2 (`thinknode_m2-gaulix`, PC crise) | ✅ | USB/BLE/Wi-Fi | USB/BLE |
 | Gestion des alertes (Signalement / Message / Alertes / ACK) | ACK `#N` | ✅ `/alerts` (Signalement 1er) | ✅ (Signalement 1er) + RX FR-Alerte |
-| Réception téléphone : Morse SOS + `#ack` (= bouton bip) | ✅ `#ack` v1.12.5 | — (pas de RX alarme) | ✅ Morse SOS anxiogène + `#ack` / DM émetteur |
+| Réception téléphone : Morse SOS + `#ack` (= bouton bip) | ✅ `#ack` v1.12.5 | — (pas de RX alarme) | ✅ Morse SOS + sirène US/SAMU + vibreur + `#ack` / DM émetteur |
 | Isolation fils Messages par canal (Fr_*) | LoRa hash | ✅ dédup OPFS v3 (si doublons UI → Ctrl+F5) | ✅ référence USB |
 | Signalement POI → waypoint Alerte+Fr_Balise (dont Météo) | — | ✅ onglet + carte | ✅ onglet + carte |
 | Bouton SOS → waypoint Fr_Balise | ⏳ | affichage carte | ⏳ |
