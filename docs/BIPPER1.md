@@ -203,7 +203,7 @@ Paramètres compilés via `userPrefs.jsonc` et appliqués au **premier boot** ou
 | Mode appairage | `FIXED_PIN` | `USERPREFS_FIXED_BLUETOOTH` |
 | PIN | 123456 | `USERPREFS_FIXED_BLUETOOTH` |
 
-Client web GerMaCrise : **Windows** = Chrome/Edge (Web Bluetooth natif) ; **Linux** = lanceur GerMaCrise (Chromium) ; **Firefox** = pas de BLE (USB Serial). Voir web `docs/BIPPER-WEB.md`.
+Client web GerMaCrise : **Windows** = Chrome/Edge (Web Bluetooth natif) ; **Linux** = `install.sh` / lanceur GerMaCrise (installent Chromium s’il manque) ; **Firefox** = pas de BLE (USB Serial). Voir web `docs/BIPPER-WEB.md`.
 
 ### Position / GPS
 

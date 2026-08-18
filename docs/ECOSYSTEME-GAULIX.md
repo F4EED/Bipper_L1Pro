@@ -65,7 +65,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 6. **Test** — signalement GerMaCrise → topics MQTT `…/2/e/Fr_Balise/…` **et** `…/2/e/Alerte/…` ; logs série passerelle `MQTT onSend - Publish`.
 7. **Distance France** — un ami hors portée LoRa ne reçoit **que** via MQTT (passerelle). Si seul `Alerte` apparaît : souvent uplink MQTT du **Primary (Fr_Balise = ch0)** défaillant en Wi‑Fi (bug Meshtastic historique) alors que le secondaire **Alerte (7)** passe. Vérifier LoRa local sur Fr_Balise avant d’incriminer le smartphone.
 
-**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). **BLE** : Windows = Chrome/Edge **natif** ; Linux = relancer **GerMaCrise** (Chromium + Web Bluetooth) ; Firefox n’a pas cette API (USB = Serial). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
+**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). **BLE** : Windows = Chrome/Edge **natif** ; Linux = `install.sh` / GerMaCrise **installent Chromium s’il manque**, puis ouvrent Web Bluetooth ; Firefox n’a pas cette API (USB = Serial). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
 **Horloge radio (RTC)** : dès la fin du handshake, web et Android envoient `AdminMessage.set_time_only` (heure PC/téléphone). Firmware Gaulix : `perhapsSetRTC(..., forceUpdate=true)` — l’heure client **écrase** toujours GPS/NTP déjà présents (sinon JJ/MM HH:MM des ACK pager reste faux).
 
@@ -76,6 +76,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 | Composant | Version / état |
 |:----------|:---------------|
 | Firmware pager | **v1.12.5** (`GAULIX_PAGER_VERSION`) |
+| Client web | **germacrise-web-v1.0.5** (`install.sh` installe Chromium sous Linux s’il manque) |
 | Protocole filaire | `#alerte\|#secours\|#vigilance\|#info [N] <texte> [#entité…]` · `#fin [N] [#entité]` · `#ack` (local) |
 | ACK lecture | `Pager ACK alerte [#N] …` en **broadcast canal Alerte** + **DM PKI vers l’émetteur** ; déclenché par bouton bip **ou** `#ack` (client téléphone ≥ Android GerMaCrise) |
 | Canal alertes + waypoints signalement | **Alerte** (7) + **Fr_Balise** (0) — double TX PortNum 8 |
