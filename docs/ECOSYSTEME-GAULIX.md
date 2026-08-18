@@ -65,7 +65,7 @@ Sur la **passerelle MQTT** (pas le PC crise coordinateur) :
 6. **Test** — signalement GerMaCrise → topics MQTT `…/2/e/Fr_Balise/…` **et** `…/2/e/Alerte/…` ; logs série passerelle `MQTT onSend - Publish`.
 7. **Distance France** — un ami hors portée LoRa ne reçoit **que** via MQTT (passerelle). Si seul `Alerte` apparaît : souvent uplink MQTT du **Primary (Fr_Balise = ch0)** défaillant en Wi‑Fi (bug Meshtastic historique) alors que le secondaire **Alerte (7)** passe. Vérifier LoRa local sur Fr_Balise avant d’incriminer le smartphone.
 
-**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). **BLE Linux** : Chrome/Chromium (flag Web Bluetooth, pas le Snap) ou Firefox + extension WebBLE — le sélecteur liste tous les appareils BLE (BlueZ n’annonce souvent pas l’UUID GATT). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
+**Client web USB** : API **Web Serial** — **Chrome** ou **Edge** (Firefox ≥ 151 possible ; Safari / Firefox plus anciens : *Web Serial not supported*). **BLE** : Windows = Chrome/Edge **natif** ; Linux = relancer **GerMaCrise** (Chromium + Web Bluetooth) ; Firefox n’a pas cette API (USB = Serial). Détail : web `docs/BIPPER-WEB.md` § Navigateurs.
 
 **Horloge radio (RTC)** : dès la fin du handshake, web et Android envoient `AdminMessage.set_time_only` (heure PC/téléphone). Firmware Gaulix : `perhapsSetRTC(..., forceUpdate=true)` — l’heure client **écrase** toujours GPS/NTP déjà présents (sinon JJ/MM HH:MM des ACK pager reste faux).
 
